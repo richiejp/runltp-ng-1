@@ -1,0 +1,64 @@
+{
+    "version": 1,
+    "disable_existing_loggers": false,
+    "formatters": {
+        "simple": {
+            "format": "%(message)s"
+        },
+        "debug": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        }
+    },
+    "handlers": {
+        "info_handler": {
+            "class": "logging.StreamHandler",
+            "level": "INFO",
+            "formatter": "simple"
+        },
+        "debug_file_handler": {
+            "class": "logging.FileHandler",
+            "level": "DEBUG",
+            "formatter": "debug",
+            "filename": "debug.log",
+            "encoding": "utf8"
+        }
+    },
+    "loggers": {
+        "ltp.main": {
+            "handlers": [
+                "info_handler"
+            ]
+        },
+        "ltp.report": {
+            "handlers": [
+                "info_handler"
+            ]
+        },
+        "ltp.test": {
+            "handlers": [
+                "info_handler"
+            ]
+        },
+        "ltp.suite": {
+            "handlers": [
+                "info_handler"
+            ]
+        },
+        "ltp.session": {
+            "handlers": [
+                "info_handler"
+            ]
+        },
+        "ltp.installer": {
+            "handlers": [
+                "info_handler"
+            ]
+        }
+    },
+    "root": {
+        "level": "DEBUG",
+        "handlers": [
+            "debug_file_handler"
+        ]
+    }
+}
