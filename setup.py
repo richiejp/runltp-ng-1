@@ -36,6 +36,10 @@ setup(
     ),
     # this will include MANIFEST.in if defined
     include_package_data=True,
+    # install requirements
+    install_requires=[
+        "paramiko<=2.9.2",
+    ],
     # requirements to run this script
     setup_requires=[
         "setuptools",

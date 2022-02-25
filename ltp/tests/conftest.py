@@ -6,6 +6,12 @@ import stat
 import pytest
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "ssh_password_only: mark test to use SSH password-only server"
+    )
+
+
 @pytest.fixture
 def prepare_tmpdir(tmpdir):
     """
