@@ -18,11 +18,18 @@ class ShellBackend(Backend):
     """
 
     def __init__(self, cwd: str = None, env: dict = None) -> None:
+        """
+        :param cwd: current working directory
+        :type cwd: str
+        :param env: environment variables
+        :type env: dict
+        """
         self._logger = logging.getLogger("ltp.shell")
         self._process = None
         self._cwd = cwd
         self._env = env
 
+    @property
     def name(self) -> str:
         return "shell"
 
@@ -43,21 +50,21 @@ class ShellBackend(Backend):
 
     def _run_cmd_impl(self, command: str, timeout: int) -> dict:
         if self._process:
-            pid = self._process.pid
-            self._logger.debug(f"Process with pid={pid} is already running")
+            self._logger.debug(
+                "Process with pid=%d is already running", self._process.pid)
             raise BackendError("A command is already running")
 
         if not command:
             raise ValueError("command is empty")
 
-        if timeout < 0:
-            timeout = 0
+        timeout = max(timeout, 0)
 
         self._logger.info("Executing '%s' (timeout=%d)", command, timeout)
 
         # keep usage of preexec_fn trivial
         # see warnings in https://docs.python.org/3/library/subprocess.html
         # pylint: disable=subprocess-popen-preexec-fn
+        # pylint: disable=consider-using-with
         self._process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -71,7 +78,7 @@ class ShellBackend(Backend):
         ret = None
         try:
             stdout = self._process.communicate(timeout=timeout)[0]
-            self._logger.debug(f"stdout={stdout}")
+            self._logger.debug("stdout=%s", stdout)
 
             ret = {
                 "command": command,
@@ -79,10 +86,10 @@ class ShellBackend(Backend):
                 "returncode": self._process.returncode,
                 "timeout": timeout,
             }
-            self._logger.debug(f"return data={ret}")
-        except subprocess.TimeoutExpired:
+            self._logger.debug("return data=%s", ret)
+        except subprocess.TimeoutExpired as err:
             self._process.kill()
-            raise BackendError(f"'{command}' command timed out")
+            raise BackendError from err
         finally:
             self._process = None
 
