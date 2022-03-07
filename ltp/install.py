@@ -77,7 +77,7 @@ class Installer:
 
         self._logger.info("Compiling completed")
 
-    def _get_opensuse_pkgs(self) -> list:
+    def _get_opensuse_packages(self) -> list:
         """
         Return openSUSE packages.
         """
@@ -341,7 +341,7 @@ class Installer:
         pkgs = None
 
         if "sles" in distro_id or "opensuse" in distro_id:
-            pkgs = self._get_opensuse_pkgs()
+            pkgs = self._get_opensuse_packages()
         elif "alpine" in distro_id:
             pkgs = self._get_alpine_packages()
         elif "debian" in distro_id:
