@@ -112,6 +112,18 @@ def _ltp_install(args: Namespace) -> None:
         args.install_dir)
 
 
+def _ltp_show_dependences(args: Namespace) -> None:
+    """
+    Handle "show-deps" command.
+    """
+    installer = Installer(m32_support=args.m32)
+    distro_id = args.distro if args.distro else installer.get_distro()
+    pkgs = installer.get_packages(distro_id)
+
+    logger = logging.getLogger("ltp.main")
+    logger.info("LTP dependences are: " + " ".join(pkgs))
+
+
 def run() -> None:
     """
     Entry point of the application.
@@ -187,6 +199,22 @@ def run() -> None:
         default="/opt/ltp",
         dest="install_dir",
         help="directory where LTP will be installed")
+
+    # show-deps subcommand parsing
+    deps_parser = subparsers.add_parser("show-deps")
+    deps_parser.set_defaults(func=_ltp_show_dependences)
+    deps_parser.add_argument(
+        "--distro",
+        "-d",
+        metavar="DISTRO_ID",
+        type=str,
+        default="",
+        help="Linux distribution name in the /etc/os-release ID format")
+    deps_parser.add_argument(
+        "--m32",
+        "-m",
+        action="store_true",
+        help="Show 32 bits packages")
 
     args = parser.parse_args()
 
