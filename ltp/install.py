@@ -340,7 +340,7 @@ class Installer:
 
         pkgs = None
 
-        if "suse" in distro_id:
+        if "sles" in distro_id or "opensuse" in distro_id:
             pkgs = self._get_opensuse_pkgs()
         elif "alpine" in distro_id:
             pkgs = self._get_alpine_packages()
