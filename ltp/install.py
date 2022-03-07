@@ -20,76 +20,13 @@ class Installer:
     LTP installer from git repository.
     """
 
-    PACKAGES = dict(
-        default=dict(
-            git="git",
-            unzip="unzip",
-            autoconf="autoconf",
-            automake="automake",
-            pkg_config="pkg-config",
-            make="make",
-            gcc="gcc",
-            bc="bc",
-            dosfstools="dosfstools",
-            xfstools="xfstools",
-            e2fsprogs="e2fsprogs",
-            btrfsprogs="btrfsprogs",
-            quota="quota",
-            nfs_utils="nfs-utils",
-            kernel_devel="kernel-devel",
-            libaio_devel="libaio-devel",
-            libacl_devel="libacl-devel",
-            libattr_devel="libattr-devel",
-            libcap_devel="libcap-devel",
-        ),
-        alpine=dict(
-            gcc="build-base",
-            pkg_config="pkgconf",
-            xfstools="xfsprogs",
-            btrfsprogs="btrfs-progs",
-            quota="quota-tools",
-            kernel_devel="linux-headers",
-            libaio_devel="libaio-dev",
-            libacl_devel="acl-dev",
-            libattr_devel="attr-dev",
-            libcap_devel="libcap-dev",
-            libnuma_devel="numactl-dev",
-        ),
-        debian=dict(
-            xfstools="xfsprogs",
-            btrfsprogs="btrfs-progs",
-            nfs_utils="nfs-kernel-server",
-            kernel_devel="linux-headers-$KERNVER$",
-            libaio_devel="libaio-dev",
-            libacl_devel="libacl1-dev",
-            libattr_devel="libattr1-dev",
-            libcap_devel="libcap-dev",
-            libnuma_devel="libnuma-dev",
-        ),
-        fedora=dict(
-            xfstools="xfsprogs",
-            btrfsprogs="btrfs-progs",
-            libaio_devel="libaio-devel",
-            libacl_devel="libacl-devel",
-            libattr_devel="libattr-devel",
-            libcap_devel="libcap-devel",
-            libnuma_devel="numactl-libs",
-        ),
-        ubuntu=dict(
-            xfstools="xfsprogs",
-            btrfsprogs="btrfs-progs",
-            nfs_utils="nfs-kernel-server",
-            kernel_devel="linux-headers-generic",
-            libaio_devel="libaio-dev",
-            libacl_devel="libacl1-dev",
-            libattr_devel="libattr1-dev",
-            libcap_devel="libcap-dev",
-            libnuma_devel="libnuma-dev",
-        ),
-    )
-
-    def __init__(self) -> None:
+    def __init__(self, m32_support: bool = False) -> None:
+        """
+        :param m32_support: if True, LTP will be installed using 32bit support
+        :type m32_support: bool
+        """
         self._logger = logging.getLogger("ltp.installer")
+        self._m32_support = m32_support
 
     def _run_cmd(self, cmd: str, cwd: str = None, raise_err=True) -> None:
         """
@@ -119,11 +56,6 @@ class Installer:
     def _clone_repo(self, url: str, repo_dir: str) -> None:
         """
         Run LTP installation from Git repository.
-        :param url: url of the git repository.
-        :type url: str
-        :param repo_dir: repository output directory.
-        :type repo_dir: str
-        :raises: InstallerError
         """
         self._logger.info("Cloning repository..")
         self._run_cmd(f"git clone --depth=1 {url} {repo_dir}")
@@ -132,13 +64,6 @@ class Installer:
     def _install_from_src(self, repo_dir: str, install_dir: str) -> None:
         """
         Run LTP installation from Git repository.
-        :param url: url of the git repository.
-        :type url: str
-        :param repo_dir: repository output directory.
-        :type repo_dir: str
-        :param install_dir: LTP installation directory.
-        :type install_dir: str
-        :raises: InstallerError
         """
         self._logger.info("Compiling sources")
 
@@ -152,10 +77,179 @@ class Installer:
 
         self._logger.info("Compiling completed")
 
+    def _get_opensuse_pkgs(self) -> list:
+        """
+        Return openSUSE packages.
+        """
+        tools = [
+            "git",
+            "unzip",
+            "autoconf",
+            "automake",
+            "pkg-config",
+            "make",
+            "gcc",
+            "bc",
+            "dosfstools",
+            "xfsprogs",
+            "e2fsprogs",
+            "btrfsprogs",
+            "quota",
+            "nfs-kernel-server",
+            "kernel-devel",
+        ]
+
+        pkgs = None
+
+        if self._m32_support:
+            pkgs = [
+                "libaio-devel-32bit",
+                "libacl-devel-32bit",
+                "libattr-devel-32bit",
+            ]
+        else:
+            pkgs = [
+                "libaio-devel",
+                "libacl-devel",
+                "libattr-devel",
+                "libcap-devel",
+                "libnuma-devel",
+            ]
+
+        pkgs.extend(tools)
+
+        return pkgs
+
+    def _get_debian_derivative_packages(self, derivative: str = "") -> list:
+        """
+        Return Debian derivatives (Debian/Ubuntu) packages.
+        """
+        tools = [
+            "git",
+            "unzip",
+            "autoconf",
+            "automake",
+            "pkg-config",
+            "make",
+            "bc",
+            "dosfstools",
+            "xfsprogs",
+            "e2fsprogs",
+            "btrfs-progs",
+            "quota",
+            "nfs-kernel-server",
+        ]
+
+        if "ubuntu" in derivative:
+            tools.append("linux-headers-generic")
+        else:
+            arch = subprocess.check_output(
+                ['dpkg', '--print-architecture']).rstrip().decode("utf-8")
+            tools.append(f"linux-headers-{arch}")
+
+        pkgs = None
+
+        if self._m32_support:
+            tools.append("gcc-multilib")
+            pkgs = [
+                "libaio-dev:i386",
+                "libacl1-dev:i386",
+                "libattr1-dev:i386",
+                "libcap-dev:i386",
+                "libnuma-dev:i386",
+            ]
+        else:
+            tools.append("gcc")
+            pkgs = [
+                "libaio-dev",
+                "libacl1-dev",
+                "libattr1-dev",
+                "libcap-dev",
+                "libnuma-dev",
+            ]
+
+        pkgs.extend(tools)
+
+        return pkgs
+
+    # pylint: disable=no-self-use
+    def _get_alpine_packages(self) -> list:
+        """
+        Return Alpine packages.
+        """
+        pkgs = [
+            "git",
+            "unzip",
+            "autoconf",
+            "automake",
+            "pkgconf",
+            "make",
+            "build-base",
+            "bc",
+            "dosfstools",
+            "xfsprogs",
+            "e2fsprogs",
+            "btrfs-progs",
+            "quota-tools",
+            "nfs-utils",
+            "linux-headers",
+            "libaio-dev",
+            "acl-dev",
+            "attr-dev",
+            "libcap-dev",
+            "numactl-dev",
+        ]
+
+        return pkgs
+
+    def _get_fedora_packages(self) -> list:
+        """
+        Return Fedora packages.
+        """
+        tools = [
+            "git",
+            "unzip",
+            "autoconf",
+            "automake",
+            "pkg-config",
+            "make",
+            "gcc",
+            "bc",
+            "dosfstools",
+            "xfsprogs",
+            "e2fsprogs",
+            "btrfs-progs",
+            "quota",
+            "nfs-utils",
+            "kernel-devel",
+        ]
+
+        pkgs = None
+
+        if self._m32_support:
+            pkgs = [
+                "libaio-devel.i686",
+                "libacl-devel.i686",
+                "libattr-devel.i686",
+                "libcap-devel.i686",
+                "numactl-libs.i686"
+            ]
+        else:
+            pkgs = [
+                "libaio-devel",
+                "libacl-devel",
+                "libattr-devel",
+                "libcap-devel",
+                "numactl-libs",
+            ]
+
+        pkgs.extend(tools)
+
+        return pkgs
+
     def _install_requirements(self) -> None:
         """
-        Install requirements for LTP installation according with the
-        Linux distro.
+        Install requirements for LTP installation according with Linux distro.
         """
         self._logger.info("Installing requirements")
 
@@ -173,15 +267,28 @@ class Installer:
             inst_cmd = "apk add "
         elif "debian" in distro_id:
             refr_cmd = "apt-get -y update"
-            inst_cmd = "DEBIAN_FRONTEND=noninteractive apt-get -y install "
+            inst_cmd = "DEBIAN_FRONTEND=noninteractive apt-get -y \
+                       --no-install-recommends install "
         elif "ubuntu" in distro_id:
             refr_cmd = "apt-get -y update"
-            inst_cmd = "DEBIAN_FRONTEND=noninteractive apt-get -y install "
+            inst_cmd = "DEBIAN_FRONTEND=noninteractive apt-get -y \
+                        --no-install-recommends install "
         elif "fedora" in distro_id:
             refr_cmd = "yum update -y"
             inst_cmd = "yum install -y "
 
         inst_cmd += " ".join(pkgs)
+
+        # add 32bit support on debian derivatives
+        if "debian" in distro_id or "ubuntu" in distro_id:
+            if self._m32_support:
+                self._logger.info("Enabling i386 support in debian derivative")
+
+                proc = subprocess.run(
+                    ['dpkg', '--add-architecture', 'i386'], check=True)
+                if proc.returncode != 0:
+                    raise InstallerError(
+                        f"Can't add i386 support on {distro_id}")
 
         self._run_cmd(refr_cmd, raise_err=False)
         self._run_cmd(inst_cmd)
@@ -220,27 +327,27 @@ class Installer:
         if not distro_id:
             raise ValueError("distro_id is empty")
 
+        if self._m32_support:
+            if "alpine" in distro_id:
+                raise InstallerError(
+                    f"{distro_id} distro doesn't support 32bit installation")
+
         self._logger.info("Getting packages for %s", distro_id)
 
-        default = self.PACKAGES["default"].copy()
+        pkgs = None
 
-        if "alpine" in distro_id:
-            default.update(self.PACKAGES["alpine"])
+        if "suse" in distro_id:
+            pkgs = self._get_opensuse_pkgs()
+        elif "alpine" in distro_id:
+            pkgs = self._get_alpine_packages()
         elif "debian" in distro_id:
-            # replace "$KERNVER$" with the kernel version
-            arch = subprocess.check_output(
-                ['dpkg', '--print-architecture']).rstrip().decode("utf-8")
-            kernver = self.PACKAGES["debian"]["kernel_devel"]
-            kernver = kernver.replace("$KERNVER$", arch)
-            self.PACKAGES["debian"]["kernel_devel"] = kernver
-
-            default.update(self.PACKAGES["debian"])
+            pkgs = self._get_debian_derivative_packages()
         elif "ubuntu" in distro_id:
-            default.update(self.PACKAGES["ubuntu"])
+            pkgs = self._get_debian_derivative_packages("ubuntu")
         elif "fedora" in distro_id:
-            default.update(self.PACKAGES["fedora"])
-
-        pkgs = [value for _, value in default.items()]
+            pkgs = self._get_fedora_packages()
+        else:
+            raise InstallerError(f"{distro_id} distro is not supported")
 
         self._logger.debug(pkgs)
 

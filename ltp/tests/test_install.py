@@ -29,13 +29,17 @@ class TestInstaller:
         with pytest.raises(ValueError):
             installer.install("myrepo", repo_dir, None)
 
-    def test_install(self, tmpdir):
+    @pytest.mark.parametrize("m32_support", [False, True])
+    def test_install(self, m32_support, tmpdir):
         """
         Test install method
         """
         repo_dir = str(tmpdir / "repo")
         inst_dir = str(tmpdir / "ltp_install")
-        installer = Installer()
+        installer = Installer(m32_support=m32_support)
+
+        if "alpine" in installer.get_distro() and m32_support:
+            pytest.skip("alpine doesn't support 32bit installation")
 
         installer.install(
             "https://github.com/linux-test-project/ltp.git",
