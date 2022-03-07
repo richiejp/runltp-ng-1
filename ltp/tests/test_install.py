@@ -3,7 +3,7 @@ Tests for install module
 """
 import os
 import pytest
-from ltp.install import Installer
+from ltp.install import Installer, InstallerError
 
 
 @pytest.mark.skipif(os.geteuid() != 0, reason="this suite requires root")
@@ -51,3 +51,23 @@ class TestInstaller:
         assert os.path.isdir(inst_dir + "/testcases")
         assert os.path.isdir(inst_dir + "/testscripts")
         assert os.path.isdir(inst_dir + "/scenario_groups")
+
+    def test_install_bad_distro(self, tmpdir, mocker):
+        """
+        Test install method with bad distro ID.
+        """
+        def my_get_distro(*args, **kwargs):
+            return "unsupported-distro"
+
+        mocker.patch.object(Installer, 'get_distro', my_get_distro)
+
+        repo_dir = str(tmpdir / "repo")
+        inst_dir = str(tmpdir / "ltp_install")
+
+        installer = Installer()
+
+        with pytest.raises(InstallerError):
+            installer.install(
+                "https://github.com/linux-test-project/ltp.git",
+                repo_dir,
+                inst_dir)

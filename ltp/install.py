@@ -254,15 +254,16 @@ class Installer:
         self._logger.info("Installing requirements")
 
         distro_id = self.get_distro()
-        pkgs = self.get_packages(distro_id)
-
-        # by default we are running openSUSE
-        inst_cmd = "zypper --non-interactive --ignore-unknown install "
-        refr_cmd = "zypper --non-interactive refresh"
 
         self._logger.info("Detected '%s' distro", distro_id)
 
-        if "alpine" in distro_id:
+        inst_cmd = None
+        refr_cmd = None
+
+        if "sles" in distro_id or "opensuse" in distro_id:
+            refr_cmd = "zypper --non-interactive refresh"
+            inst_cmd = "zypper --non-interactive --ignore-unknown install "
+        elif "alpine" in distro_id:
             refr_cmd = "apk update"
             inst_cmd = "apk add "
         elif "debian" in distro_id:
@@ -276,7 +277,10 @@ class Installer:
         elif "fedora" in distro_id:
             refr_cmd = "yum update -y"
             inst_cmd = "yum install -y "
+        else:
+            raise InstallerError(f"{distro_id} distro is not supported")
 
+        pkgs = self.get_packages(distro_id)
         inst_cmd += " ".join(pkgs)
 
         # add 32bit support on debian derivatives
