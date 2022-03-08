@@ -12,6 +12,8 @@ import json
 import argparse
 import platform
 from argparse import Namespace
+
+from .install import install_run
 from .report import export_to_json
 from .install import Installer
 from .session import LTPSession
@@ -112,18 +114,6 @@ def _ltp_install(args: Namespace) -> None:
         args.install_dir)
 
 
-def _ltp_show_dependences(args: Namespace) -> None:
-    """
-    Handle "show-deps" command.
-    """
-    installer = Installer(m32_support=args.m32)
-    distro_id = args.distro if args.distro else installer.get_distro()
-    pkgs = installer.get_packages(distro_id)
-
-    logger = logging.getLogger("ltp.main")
-    logger.info("LTP dependences are: " + " ".join(pkgs))
-
-
 def run() -> None:
     """
     Entry point of the application.
@@ -202,19 +192,25 @@ def run() -> None:
 
     # show-deps subcommand parsing
     deps_parser = subparsers.add_parser("show-deps")
-    deps_parser.set_defaults(func=_ltp_show_dependences)
+    deps_parser.set_defaults(func=install_run)
     deps_parser.add_argument(
         "--distro",
-        "-d",
         metavar="DISTRO_ID",
         type=str,
         default="",
         help="Linux distribution name in the /etc/os-release ID format")
     deps_parser.add_argument(
         "--m32",
-        "-m",
         action="store_true",
         help="Show 32 bits packages")
+    deps_parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Include build packages")
+    deps_parser.add_argument(
+        "--runtime",
+        action="store_true",
+        help="Include runtime packages")
 
     args = parser.parse_args()
 

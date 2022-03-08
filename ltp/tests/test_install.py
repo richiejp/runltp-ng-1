@@ -2,14 +2,61 @@
 Tests for install module
 """
 import os
+import shutil
 import pytest
 from ltp.install import Installer, InstallerError
+from ltp.install import main as main_run
+from ltp.install import SUPPORTED_DISTROS
+
+
+class TestPackages:
+    """
+    Tests for packages support in Installer class.
+    """
+
+    @pytest.mark.parametrize("distro", SUPPORTED_DISTROS)
+    @pytest.mark.parametrize("m32", [True, False])
+    def test_get_packages(self, distro, m32):
+        """
+        Test get_packages method
+        """
+        if distro == "debian" and not shutil.which("dpkg"):
+            pytest.xfail("Running system doesn't have dpkg")
+
+        if distro == "alpine" and m32:
+            pytest.xfail("Alpine doesn't support 32bit")
+
+        installer = Installer(m32_support=m32)
+        pkgs = installer.get_packages(distro)
+
+        assert "build" in pkgs
+        assert "runtime" in pkgs
+        assert "libs" in pkgs
+        assert pkgs["build"] is not None
+        assert pkgs["runtime"] is not None
+        assert pkgs["libs"] is not None
+
+    @pytest.mark.parametrize("distro", SUPPORTED_DISTROS)
+    @pytest.mark.parametrize("pkgs", [
+        "--build",
+        "--runtime",
+        "--build --runtime"])
+    @pytest.mark.parametrize("m32", ["--m32", ""])
+    def test_install_run(self, mocker, distro, pkgs, m32):
+        """
+        Test install_run function for the argparse function.
+        """
+        if distro == "debian" and not shutil.which("dpkg"):
+            pytest.xfail("Running system doesn't have dpkg")
+
+        mocker.patch("sys.argv", return_value=['--distro', distro, pkgs, m32])
+        main_run()
 
 
 @pytest.mark.skipif(os.geteuid() != 0, reason="this suite requires root")
-class TestInstaller:
+class TestInstall:
     """
-    Tests for Installer class.
+    Tests for installation in Installer class.
     """
 
     def test_install_bad_args(self, tmpdir):

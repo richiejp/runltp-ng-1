@@ -7,6 +7,17 @@
 """
 import logging
 import subprocess
+import argparse
+from argparse import Namespace
+
+SUPPORTED_DISTROS = [
+    "opensuse",
+    "sles",
+    "debian",
+    "ubuntu",
+    "alpine",
+    "fedora"
+]
 
 
 class InstallerError(Exception):
@@ -77,38 +88,41 @@ class Installer:
 
         self._logger.info("Compiling completed")
 
-    def _get_opensuse_packages(self) -> list:
+    def _get_opensuse_packages(self) -> dict:
         """
         Return openSUSE packages.
         """
-        tools = [
-            "git",
-            "unzip",
+        pkgs = {}
+
+        pkgs["build"] = [
+            "make",
             "autoconf",
             "automake",
             "pkg-config",
-            "make",
             "gcc",
-            "bc",
+            "git",
+            "unzip",
+            "kernel-devel",
+        ]
+
+        pkgs["runtime"] = [
             "dosfstools",
             "xfsprogs",
             "e2fsprogs",
             "btrfsprogs",
+            "bc",
             "quota",
             "nfs-kernel-server",
-            "kernel-devel",
         ]
 
-        pkgs = None
-
         if self._m32_support:
-            pkgs = [
+            pkgs["libs"] = [
                 "libaio-devel-32bit",
                 "libacl-devel-32bit",
                 "libattr-devel-32bit",
             ]
         else:
-            pkgs = [
+            pkgs["libs"] = [
                 "libaio-devel",
                 "libacl-devel",
                 "libattr-devel",
@@ -116,42 +130,43 @@ class Installer:
                 "libnuma-devel",
             ]
 
-        pkgs.extend(tools)
-
         return pkgs
 
-    def _get_debian_derivative_packages(self, derivative: str = "") -> list:
+    def _get_debian_derivative_packages(self, derivative: str = "") -> dict:
         """
         Return Debian derivatives (Debian/Ubuntu) packages.
         """
-        tools = [
+        pkgs = {}
+
+        pkgs["build"] = [
+            "make",
+            "automake",
+            "autoconf",
+            "pkg-config",
             "git",
             "unzip",
-            "autoconf",
-            "automake",
-            "pkg-config",
-            "make",
-            "bc",
+        ]
+
+        pkgs["runtime"] = [
             "dosfstools",
             "xfsprogs",
             "e2fsprogs",
             "btrfs-progs",
+            "bc",
             "quota",
             "nfs-kernel-server",
         ]
 
         if "ubuntu" in derivative:
-            tools.append("linux-headers-generic")
+            pkgs["runtime"].append("linux-headers-generic")
         else:
             arch = subprocess.check_output(
                 ['dpkg', '--print-architecture']).rstrip().decode("utf-8")
-            tools.append(f"linux-headers-{arch}")
-
-        pkgs = None
+            pkgs["runtime"].append(f"linux-headers-{arch}")
 
         if self._m32_support:
-            tools.append("gcc-multilib")
-            pkgs = [
+            pkgs["build"].append("gcc-multilib")
+            pkgs["libs"] = [
                 "libaio-dev:i386",
                 "libacl1-dev:i386",
                 "libattr1-dev:i386",
@@ -159,8 +174,8 @@ class Installer:
                 "libnuma-dev:i386",
             ]
         else:
-            tools.append("gcc")
-            pkgs = [
+            pkgs["build"].append("gcc")
+            pkgs["libs"] = [
                 "libaio-dev",
                 "libacl1-dev",
                 "libattr1-dev",
@@ -168,31 +183,37 @@ class Installer:
                 "libnuma-dev",
             ]
 
-        pkgs.extend(tools)
-
         return pkgs
 
     # pylint: disable=no-self-use
-    def _get_alpine_packages(self) -> list:
+    def _get_alpine_packages(self) -> dict:
         """
         Return Alpine packages.
         """
-        pkgs = [
+        pkgs = {}
+
+        pkgs["build"] = [
+            "make",
+            "automake",
+            "autoconf",
+            "pkgconf",
+            "build-base",
             "git",
             "unzip",
-            "autoconf",
-            "automake",
-            "pkgconf",
-            "make",
-            "build-base",
-            "bc",
+            "linux-headers",
+        ]
+
+        pkgs["runtime"] = [
             "dosfstools",
             "xfsprogs",
             "e2fsprogs",
             "btrfs-progs",
+            "bc",
             "quota-tools",
             "nfs-utils",
-            "linux-headers",
+        ]
+
+        pkgs["libs"] = [
             "libaio-dev",
             "acl-dev",
             "attr-dev",
@@ -206,28 +227,31 @@ class Installer:
         """
         Return Fedora packages.
         """
-        tools = [
+        pkgs = {}
+
+        pkgs["build"] = [
+            "make",
+            "automake",
+            "autoconf",
+            "pkg-config",
+            "gcc",
             "git",
             "unzip",
-            "autoconf",
-            "automake",
-            "pkg-config",
-            "make",
-            "gcc",
-            "bc",
+            "kernel-devel",
+        ]
+
+        pkgs["runtime"] = [
             "dosfstools",
             "xfsprogs",
             "e2fsprogs",
             "btrfs-progs",
+            "bc",
             "quota",
             "nfs-utils",
-            "kernel-devel",
         ]
 
-        pkgs = None
-
         if self._m32_support:
-            pkgs = [
+            pkgs["libs"] = [
                 "libaio-devel.i686",
                 "libacl-devel.i686",
                 "libattr-devel.i686",
@@ -235,15 +259,13 @@ class Installer:
                 "numactl-libs.i686"
             ]
         else:
-            pkgs = [
+            pkgs["libs"] = [
                 "libaio-devel",
                 "libacl-devel",
                 "libattr-devel",
                 "libcap-devel",
                 "numactl-libs",
             ]
-
-        pkgs.extend(tools)
 
         return pkgs
 
@@ -281,7 +303,10 @@ class Installer:
             raise InstallerError(f"{distro_id} distro is not supported")
 
         pkgs = self.get_packages(distro_id)
-        inst_cmd += " ".join(pkgs)
+
+        inst_cmd += " ".join(pkgs["build"])
+        inst_cmd += " ".join(pkgs["runtime"])
+        inst_cmd += " ".join(pkgs["libs"])
 
         # add 32bit support on debian derivatives
         if "debian" in distro_id or "ubuntu" in distro_id:
@@ -320,16 +345,16 @@ class Installer:
 
         return name
 
-    def get_packages(self, distro_id: str) -> list:
+    def get_packages(self, distro_id: str) -> dict:
         """
         Return the list of packages which has to be installed according with
         the running operating system.
         :param distro_id: the ID given by /etc/os-release
         :type distro_id: str
-        :returns: list
+        :returns: dict
         """
-        if not distro_id:
-            raise ValueError("distro_id is empty")
+        if distro_id not in SUPPORTED_DISTROS:
+            raise InstallerError(f"{distro_id} distro is not supported")
 
         if self._m32_support:
             if "alpine" in distro_id:
@@ -380,3 +405,59 @@ class Installer:
         self._install_requirements()
         self._clone_repo(url, repo_dir)
         self._install_from_src(repo_dir, install_dir)
+
+
+def install_run(args: Namespace) -> None:
+    """
+    Run the installer main command.
+    """
+    if not args.build and not args.runtime:
+        print("No packages selected!")
+        return
+
+    try:
+        installer = Installer(m32_support=args.m32)
+        distro_id = args.distro if args.distro else installer.get_distro()
+        pkgs = installer.get_packages(distro_id)
+
+        msg = ""
+        if args.build:
+            msg += " ".join(pkgs["build"]) + " "
+            msg += " ".join(pkgs["libs"]) + " "
+
+        if args.runtime:
+            msg += " ".join(pkgs["runtime"])
+
+        print(msg)
+    except InstallerError as err:
+        print(str(err))
+
+
+def main():
+    parser = argparse.ArgumentParser(description='LTP packages')
+    parser.add_argument(
+        "--distro",
+        metavar="DISTRO_ID",
+        type=str,
+        default="",
+        help="Linux distribution name in the /etc/os-release ID format")
+    parser.add_argument(
+        "--m32",
+        action="store_true",
+        help="Show 32 bits packages")
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Include build packages")
+    parser.add_argument(
+        "--runtime",
+        action="store_true",
+        help="Include runtime packages")
+
+    args = parser.parse_args()
+
+    install_run(args)
+
+
+if __name__ == "__main__":
+    main()
