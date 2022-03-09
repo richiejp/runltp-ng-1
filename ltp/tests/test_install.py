@@ -6,7 +6,10 @@ import shutil
 import pytest
 from ltp.install import Installer, InstallerError
 from ltp.install import main as main_run
-from ltp.install import SUPPORTED_DISTROS
+from ltp.install import PACKAGE_HANDLERS
+
+
+SUPPORTED_DISTROS = [pm.name for pm in PACKAGE_HANDLERS]
 
 
 class TestPackages:
@@ -26,15 +29,11 @@ class TestPackages:
         if distro == "alpine" and m32:
             pytest.xfail("Alpine doesn't support 32bit")
 
-        installer = Installer(m32_support=m32)
-        pkgs = installer.get_packages(distro)
+        installer = Installer()
+        pkg_mng = installer.get_pkg_handler(distro)
+        pkgs = pkg_mng.get_all_pkgs(m32)
 
-        assert "build" in pkgs
-        assert "runtime" in pkgs
-        assert "libs" in pkgs
-        assert pkgs["build"] is not None
-        assert pkgs["runtime"] is not None
-        assert pkgs["libs"] is not None
+        assert pkgs is not None
 
     @pytest.mark.parametrize("distro", SUPPORTED_DISTROS)
     @pytest.mark.parametrize("pkgs", [
@@ -59,7 +58,8 @@ class TestInstall:
     Tests for installation in Installer class.
     """
 
-    def test_install_bad_args(self, tmpdir):
+    @pytest.mark.parametrize("m32_support", [False, True])
+    def test_install_bad_args(self, m32_support, tmpdir):
         """
         Test install method with bad arguments.
         """
@@ -68,13 +68,13 @@ class TestInstall:
         installer = Installer()
 
         with pytest.raises(ValueError):
-            installer.install(None, repo_dir, inst_dir)
+            installer.install(m32_support, None, repo_dir, inst_dir)
 
         with pytest.raises(ValueError):
-            installer.install("myrepo", None, inst_dir)
+            installer.install(m32_support, "myrepo", None, inst_dir)
 
         with pytest.raises(ValueError):
-            installer.install("myrepo", repo_dir, None)
+            installer.install(m32_support, "myrepo", repo_dir, None)
 
     @pytest.mark.parametrize("m32_support", [False, True])
     def test_install(self, m32_support, tmpdir):
@@ -83,12 +83,13 @@ class TestInstall:
         """
         repo_dir = str(tmpdir / "repo")
         inst_dir = str(tmpdir / "ltp_install")
-        installer = Installer(m32_support=m32_support)
+        installer = Installer()
 
         if "alpine" in installer.get_distro() and m32_support:
             pytest.skip("alpine doesn't support 32bit installation")
 
         installer.install(
+            m32_support,
             "https://github.com/linux-test-project/ltp.git",
             repo_dir,
             inst_dir)
@@ -99,7 +100,8 @@ class TestInstall:
         assert os.path.isdir(inst_dir + "/testscripts")
         assert os.path.isdir(inst_dir + "/scenario_groups")
 
-    def test_install_bad_distro(self, tmpdir, mocker):
+    @pytest.mark.parametrize("m32_support", [False, True])
+    def test_install_bad_distro(self, m32_support, tmpdir, mocker):
         """
         Test install method with bad distro ID.
         """
@@ -115,6 +117,7 @@ class TestInstall:
 
         with pytest.raises(InstallerError):
             installer.install(
+                m32_support,
                 "https://github.com/linux-test-project/ltp.git",
                 repo_dir,
                 inst_dir)

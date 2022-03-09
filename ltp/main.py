@@ -211,6 +211,10 @@ def run() -> None:
         "--runtime",
         action="store_true",
         help="Include runtime packages")
+    parser.add_argument(
+        "--cmd",
+        action="store_true",
+        help="Print command line instead of package list")
 
     args = parser.parse_args()
 
