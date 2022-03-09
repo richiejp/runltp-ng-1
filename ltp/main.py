@@ -13,6 +13,7 @@ import argparse
 import platform
 from argparse import Namespace
 
+from .install import get_installer
 from .install import install_run
 from .report import export_to_json
 from .install import Installer
@@ -107,8 +108,9 @@ def _ltp_install(args: Namespace) -> None:
     """
     Handle "install" subcommand.
     """
-    installer = Installer()
+    installer = get_installer()
     installer.install(
+        args.m32,
         args.repo_url,
         args.repo_dir,
         args.install_dir)
