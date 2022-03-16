@@ -1,7 +1,6 @@
 """
 Unittest for shell module.
 """
-import os
 import time
 import signal
 import threading
@@ -12,7 +11,7 @@ def test_name():
     """
     Test name property.
     """
-    assert ShellBackend().name() == "shell"
+    assert ShellBackend().name == "shell"
 
 
 def test_start():
