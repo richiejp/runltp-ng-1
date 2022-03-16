@@ -7,24 +7,32 @@ LTP Next-Gen runner is a new version of the `runltp` script used by the
 Quickstart
 ==========
 
-You can get help with `runltp-ng --help`. To install the application:
-
-    virtualenv venv
-    source venv/bin/activate
-
-    python setup.py install
+You can get help with `./runltp-ng --help`.
+Be sure to have properly set LTPROOT variable before running the commmand if you
+are not already in the LTP folder.
 
 > **_NOTE:_**  All features are experimental and they are under development.
 
-Showing tests
--------------
+Commands
+--------
 
-LTP tests can be shown using `runltp-ng list` command.
+Some basic commands are the following:
+
+    # show testing suites
+    ./runltp-ng list
+
+    # run syscalls and dio testing suite
+    ./runltp-ng run --suites syscalls dio
+
+    # show packages to build LTP on the current system
+    ./runltp-ng show-deps --build
+
+Please use `--help` to check all available options for the commands above.
 
 Running tests
 -------------
 
-LTP tests can be run using `runltp-ng run` command.
+LTP tests can be run using `./runltp-ng run` command.
 
 Install LTP
 -----------
@@ -33,10 +41,10 @@ The LTP installation can be done using the `runltp-ng install` command.
 The following Linux distro are supported:
 
 - openSUSE
+- RHEL
 - Debian
 - Ubuntu
 - Fedora
-- CentOS
 - Alpine
 
 Environment
@@ -59,11 +67,8 @@ Unit testing
 
 To run unittests, `pytest` has to be installed:
 
-    pip install pytest coverage
-    pip install -e . # devel package install
-
-    coverage run -m pytest
-    coverage html
+    pip install pytest pytest-mock
+    pytest ./ltp/tests
 
 Linting
 -------
