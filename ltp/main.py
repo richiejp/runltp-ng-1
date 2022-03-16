@@ -16,7 +16,6 @@ from argparse import Namespace
 from .install import get_installer
 from .install import install_run
 from .report import export_to_json
-from .install import Installer
 from .session import LTPSession
 
 
@@ -213,6 +212,10 @@ def run() -> None:
         "--runtime",
         action="store_true",
         help="Include runtime packages")
+    deps_parser.add_argument(
+        "--cmd",
+        action="store_true",
+        help="Print command line instead of package list")
 
     args = parser.parse_args()
 

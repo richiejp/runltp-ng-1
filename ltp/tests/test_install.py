@@ -16,6 +16,7 @@ SUPPORTED_DISTROS = [pm.distro_id for pm in INSTALLERS]
 @pytest.mark.parametrize("build", ["--build", ""])
 @pytest.mark.parametrize("runtime", ["--runtime", ""])
 @pytest.mark.parametrize("m32", ["--m32", ""])
+@pytest.mark.parametrize("cmd", ["--cmd", ""])
 def test_install_run(mocker, distro, build, runtime, m32, cmd):
     """
     Test install_run function for __main__

@@ -515,6 +515,11 @@ def install_run(args: Namespace) -> None:
         installer = get_installer(distro_id)
 
         msg = ""
+        if args.cmd:
+            msg += installer.refresh_cmd
+            msg += " && "
+            msg += installer.install_cmd
+            msg += " "
 
         if args.build:
             pkgs = installer.get_build_pkgs(args.m32)
@@ -554,6 +559,10 @@ def main():
         "--runtime",
         action="store_true",
         help="Include runtime packages")
+    parser.add_argument(
+        "--cmd",
+        action="store_true",
+        help="Print command line instead of package list")
 
     args = parser.parse_args()
 
