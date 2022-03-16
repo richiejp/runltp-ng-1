@@ -1,0 +1,21 @@
+#!/usr/bin/python3
+"""
+.. module:: runltp-ng
+    :platform: Linux
+    :synopsis: Entry point of the runltp-ng tool.
+
+.. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
+"""
+
+# pylint: disable=invalid-name
+
+import os
+import sys
+
+# include runltp-ng library
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+
+import ltp.main
+
+if __name__ == "__main__":
+    ltp.main.run()
