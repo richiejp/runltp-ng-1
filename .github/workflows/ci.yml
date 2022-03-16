@@ -1,6 +1,6 @@
 # Copyright (c) 2022 Andrea Cervesato <andrea.cervesato@suse.com>
 
-name: "CI: docker based testing"
+name: "CI: test on multiple distro"
 on: [push, pull_request]
 
 jobs:
@@ -67,6 +67,4 @@ jobs:
         python3 -m pip install pytest-mock
 
     - name: Test with pytest
-      run: |
-        python3 -m pip install -e .
-        pytest
+      run: pytest
