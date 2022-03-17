@@ -536,11 +536,11 @@ def install_run(args: Namespace) -> None:
         print(str(err))
 
 
-def main():
+def init_cmdline(parser: argparse.ArgumentParser) -> None:
     """
-    Main point for the install script.
+    Initialize command line arguments.
     """
-    parser = argparse.ArgumentParser(description='LTP packages')
+    parser.set_defaults(func=install_run)
     parser.add_argument(
         "--distro",
         metavar="DISTRO_ID",
@@ -564,9 +564,20 @@ def main():
         action="store_true",
         help="Print command line instead of package list")
 
+
+def main():
+    """
+    Main point for the install script.
+    """
+    parser = argparse.ArgumentParser(description='LTP packages tool')
+    init_cmdline(parser)
+
     args = parser.parse_args()
 
-    install_run(args)
+    if hasattr(args, "func"):
+        args.func(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

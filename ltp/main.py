@@ -13,10 +13,9 @@ import argparse
 import platform
 from argparse import Namespace
 
-from .install import get_installer
-from .install import install_run
-from .report import export_to_json
-from .session import LTPSession
+import ltp.install
+from ltp.report import export_to_json
+from ltp.session import LTPSession
 
 
 def _print_results(session: LTPSession) -> None:
@@ -107,7 +106,7 @@ def _ltp_install(args: Namespace) -> None:
     """
     Handle "install" subcommand.
     """
-    installer = get_installer()
+    installer = ltp.install.get_installer()
     installer.install(
         args.m32,
         args.repo_url,
@@ -193,29 +192,7 @@ def run() -> None:
 
     # show-deps subcommand parsing
     deps_parser = subparsers.add_parser("show-deps")
-    deps_parser.set_defaults(func=install_run)
-    deps_parser.add_argument(
-        "--distro",
-        metavar="DISTRO_ID",
-        type=str,
-        default="",
-        help="Linux distribution name in the /etc/os-release ID format")
-    deps_parser.add_argument(
-        "--m32",
-        action="store_true",
-        help="Show 32 bits packages")
-    deps_parser.add_argument(
-        "--build",
-        action="store_true",
-        help="Include build packages")
-    deps_parser.add_argument(
-        "--runtime",
-        action="store_true",
-        help="Include runtime packages")
-    deps_parser.add_argument(
-        "--cmd",
-        action="store_true",
-        help="Print command line instead of package list")
+    ltp.install.init_cmdline(deps_parser)
 
     args = parser.parse_args()
 
