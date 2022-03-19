@@ -4,263 +4,301 @@ Unittest for ssh module.
 import os
 import time
 import socket
-import logging
 import threading
+import subprocess
+import logging
 import pytest
-import paramiko
 from ltp.ssh import SSHBackend
 from ltp.backend import BackendError
 
 
-KEY = b'\x0c\xe2\x57\xb3\x23\x4c\x57\x22\x54\xba\x56\x79\x62\x5c\x95\x37'
-
-
-class ServerKeyOnly(paramiko.ServerInterface):
+class OpenSSHServer:
     """
-    SSH server for publickey only.
+    Class helper used to initialize a OpenSSH server.
     """
 
-    def check_channel_request(self, kind, chanid):
-        return paramiko.OPEN_SUCCEEDED
+    def __init__(self, tmpdir: str, port: int = 2222) -> None:
+        """
+        :param port: ssh server port
+        :type port: int
+        """
+        self._logger = logging.getLogger("sshserver")
 
-    def get_allowed_auths(self, username):
-        return "publickey"
+        self._dir_name = os.path.dirname(__file__)
+        self._server_key = os.path.abspath(
+            os.path.sep.join([self._dir_name, 'id_rsa']))
+        self._sshd_config_tmpl = os.path.abspath(
+            os.path.sep.join([self._dir_name, 'sshd_config.tmpl']))
+        self._sshd_config = os.path.abspath(
+            os.path.sep.join([tmpdir, 'sshd_config']))
 
-    def check_auth_publickey(self, username, key):
-        if key.get_name() == 'ssh-rsa' and key.get_fingerprint() == KEY:
-            return paramiko.AUTH_SUCCESSFUL
-        return paramiko.AUTH_FAILED
+        self._port = port
+        self._proc = None
+        self._thread = None
+        self._stop_thread = False
 
-    def check_channel_exec_request(self, channel, command):
-        if command != b"yes":
-            return False
-        return True
+        # setup permissions on server key
+        os.chmod(self._server_key, 0o600)
+
+        # create sshd configuration file
+        self._create_sshd_config()
+
+    def _wait_for_port(self) -> None:
+        """
+        Wait until server is up.
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        while sock.connect_ex(('127.0.0.1', self._port)) != 0:
+            time.sleep(.1)
+        del sock
+
+    def _create_sshd_config(self) -> None:
+        """
+        Create SSHD configuration file from template config expanding
+        authorized_keys.
+        """
+        self._logger.info("creating SSHD configuration")
+
+        # read template sshd configuration file
+        with open(self._sshd_config_tmpl, 'r') as fh:
+            tmpl = fh.read()
+
+        # replace parent directory with the current directory
+        auth_file = os.path.join(os.path.abspath(
+            self._dir_name), 'authorized_keys')
+        tmpl = tmpl.replace('{{authorized_keys}}', auth_file)
+
+        self._logger.info("SSHD configuration is: %s", tmpl)
+
+        # write sshd configuration file
+        with open(self._sshd_config, 'w') as fh:
+            for line in tmpl:
+                fh.write(line)
+            fh.write(os.linesep)
+
+        self._logger.info(
+            "'%s' configuration file has been created", self._sshd_config)
+
+    def start(self) -> None:
+        """
+        Start ssh server.
+        """
+        cmd = [
+            '/usr/sbin/sshd',
+            '-ddd',
+            '-D',
+            '-p', str(self._port),
+            '-h', self._server_key,
+            '-f', self._sshd_config,
+        ]
+
+        self._logger.info("starting SSHD with command: %s", cmd)
+
+        def run_server():
+            self._proc = subprocess.Popen(
+                " ".join(cmd),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                shell=True,
+                universal_newlines=True,
+            )
+
+            while self._proc.poll() is None:
+                if self._stop_thread:
+                    break
+
+                line = self._proc.stdout.readline()
+                if not line:
+                    break
+
+                self._logger.info(line.rstrip())
+
+        self._thread = threading.Thread(target=run_server)
+        self._thread.start()
+
+        time.sleep(2)
+
+        self._logger.info("service is up to use")
+
+    def stop(self) -> None:
+        """
+        Stop ssh server.
+        """
+        if not self._proc or not self._thread:
+            return
+
+        self._logger.info("stopping SSHD service")
+
+        self._proc.kill()
+        self._stop_thread = True
+        self._thread.join(timeout=10)
+
+        self._logger.info("service stopped")
 
 
-class ServerPasswordOnly(paramiko.ServerInterface):
+@pytest.fixture(scope="module")
+def config():
     """
-    Simple SSH server for testing.
+    Fixture exposing configuration
     """
+    class Config:
+        """
+        Configuration class
+        """
+        import pwd
+        hostname = "127.0.0.1"
+        port = 2222
+        testsdir = os.path.abspath(os.path.dirname(__file__))
+        currdir = os.path.abspath('.')
+        user = pwd.getpwuid(os.geteuid()).pw_name
+        user_key = os.path.sep.join([testsdir, 'id_rsa'])
+        user_key_pub = os.path.sep.join([testsdir, 'id_rsa.pub'])
 
-    def check_channel_request(self, kind, chanid):
-        return paramiko.OPEN_SUCCEEDED
-
-    def get_allowed_auths(self, username):
-        return "password"
-
-    def check_auth_publickey(self, username, key):
-        # force password only login
-        return paramiko.AUTH_FAILED
-
-    def check_auth_password(self, username, password):
-        if username == 'root' and password == 'toor':
-            return paramiko.AUTH_SUCCESSFUL
-        return paramiko.AUTH_FAILED
+    return Config()
 
 
 @pytest.fixture
-def run_server(request):
-    """
-    Setup/Teardown for unittests.
-    """
-    password_only = request.node.get_closest_marker("ssh_password_only")
-
-    class MyThread(threading.Thread):
-        """
-        Handle SSH connection.
-        """
-
-        def __init__(self):
-            threading.Thread.__init__(self)
-            self.daemon = True
-            self.transport = None
-            self.socket = None
-
-        def run(self):
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.bind(("localhost", 2222))
-            self.socket.listen(100)
-
-            socks, _ = self.socket.accept()
-
-            self.transport = paramiko.Transport(socks)
-            self.transport.set_gss_host(socket.getfqdn(""))
-            self.transport.load_server_moduli()
-
-            tests_dir = os.path.dirname(os.path.realpath(__file__))
-            host_key = paramiko.RSAKey(
-                filename=os.path.join(tests_dir, "id_rsa"))
-            self.transport.add_server_key(host_key)
-
-            server = None
-            if password_only:
-                server = ServerPasswordOnly()
-            else:
-                server = ServerKeyOnly()
-
-            self.transport.start_server(server=server)
-
-    thread = MyThread()
-    thread.start()
-
+def ssh_server(tmpdir):
+    server = OpenSSHServer(str(tmpdir), port=2222)
+    server.start()
     yield
-
-    if thread.transport:
-        thread.transport.close()
-
-    thread.socket.shutdown(socket.SHUT_RDWR)
-    thread.socket.close()
-    thread.join()
+    server.stop()
 
 
 def test_name():
     """
     Test if name property returns the right name
     """
-    client = SSHBackend(host="localhost", port=2222)
+    client = SSHBackend()
     assert client.name == "ssh"
 
 
-@pytest.mark.usefixtures("run_server")
-def test_connection_force_stop(caplog):
+@pytest.mark.usefixtures("ssh_server")
+def test_bad_hostname(config):
     """
-    Test connection stopping it using force_stop.
-    """
-    caplog.set_level(logging.INFO, logger="paramiko.transport:transport.py")
-
-    tests_dir = os.path.dirname(os.path.realpath(__file__))
-    keyfile = os.path.join(tests_dir, "id_rsa.pub")
-
-    client = SSHBackend(
-        host="localhost",
-        port=2222,
-        user=None,
-        key_file=keyfile)
-
-    thread = threading.Thread(target=lambda: client.start(), daemon=True)
-    thread.start()
-    time.sleep(1)
-    client.force_stop()
-
-    assert "Connection closed" in caplog.messages
-
-
-@pytest.mark.usefixtures("run_server")
-def test_connection_key_file(caplog):
-    """
-    Test connection using key_file.
-    """
-    caplog.set_level(logging.INFO, logger="paramiko.transport:transport.py")
-
-    tests_dir = os.path.dirname(os.path.realpath(__file__))
-    keyfile = os.path.join(tests_dir, "id_rsa.pub")
-
-    client = SSHBackend(
-        host="localhost",
-        port=2222,
-        user=None,
-        key_file=keyfile)
-
-    client.start()
-    client.stop()
-
-    assert "Authentication (publickey) successful!" in caplog.messages
-
-
-@pytest.mark.usefixtures("run_server")
-@pytest.mark.ssh_password_only
-def test_connection_user_password(caplog):
-    """
-    Test connection using username/password.
-    """
-    caplog.set_level(logging.INFO, logger="paramiko.transport:transport.py")
-
-    client = SSHBackend(
-        host="localhost",
-        port=2222,
-        user="root",
-        password="toor")
-
-    client.start()
-    client.stop()
-
-    assert "Authentication (password) successful!" in caplog.messages
-
-
-@pytest.mark.usefixtures("run_server")
-@pytest.mark.ssh_password_only
-def test_connection_wrong_user(caplog):
-    """
-    Test connection using a wrong username.
+    Test connection when a bad hostname is given.
     """
     client = SSHBackend(
-        host="localhost",
-        port=2222,
-        user="myuser",
-        password="toor")
+        host="127.0.0.2",
+        port=config.port,
+        user=config.user,
+        key_file=config.user_key)
 
     with pytest.raises(BackendError):
         client.start()
 
-    assert "Authentication (password) failed." in caplog.messages
 
-
-@pytest.mark.usefixtures("run_server")
-def test_run_cmd(mocker):
+@pytest.mark.usefixtures("ssh_server")
+def test_bad_port(config):
     """
-    Test run_cmd method.
+    Test connection when a bad port is given.
     """
-    # it's almost impossible to test run_cmd without mocking exec_command,
-    # since we need the channel object to send data from server to client
-    def my_exec_command(*args, **kwargs):
-        stdout = mocker.MagicMock()
-        stdout.readlines.return_value = ["yes\n"]
-        stdout.channel.recv_exit_status.return_value = 0
-        return None, stdout, None
+    client = SSHBackend(
+        host=config.hostname,
+        port=12345,
+        user=config.user,
+        key_file=config.user_key)
 
-    mocker.patch.object(paramiko.SSHClient, 'exec_command', my_exec_command)
+    with pytest.raises(BackendError):
+        client.start()
 
-    client = SSHBackend(host="localhost", port=2222)
+
+@pytest.mark.usefixtures("ssh_server")
+def test_bad_user(config):
+    """
+    Test connection when a bad user is given.
+    """
+    client = SSHBackend(
+        host=config.hostname,
+        port=config.port,
+        user="this_user_doesnt_exist",
+        key_file=config.user_key)
+
+    with pytest.raises(BackendError):
+        client.start()
+
+
+@pytest.mark.usefixtures("ssh_server")
+def test_bad_key_file(config):
+    """
+    Test connection when a bad key file is given.
+    """
+    client = SSHBackend(
+        host=config.hostname,
+        port=config.port,
+        user=config.user,
+        key_file="this_key_doesnt_exist.key")
+
+    with pytest.raises(BackendError):
+        client.start()
+
+
+@pytest.mark.usefixtures("ssh_server")
+def test_bad_password(config):
+    """
+    Test connection when a bad password is given.
+    """
+    client = SSHBackend(
+        host=config.hostname,
+        port=config.port,
+        user=config.user,
+        password="wrong_password")
+
+    with pytest.raises(BackendError):
+        client.start()
+
+
+@pytest.mark.usefixtures("ssh_server")
+def test_bad_auth(config):
+    """
+    Test a unsupported authentication method.
+    """
+    client = SSHBackend(
+        host=config.hostname,
+        port=config.port,
+        user=config.user)
+
+    with pytest.raises(BackendError):
+        client.start()
+
+
+@pytest.mark.usefixtures("ssh_server")
+def test_connection_key_file(config):
+    """
+    Test connection using key_file.
+    """
+    client = SSHBackend(
+        host=config.hostname,
+        port=config.port,
+        user=config.user,
+        key_file=config.user_key)
+
     client.start()
-    ret = client.run_cmd("yes", 1)
+    ret = client.run_cmd("echo 'this is not a test'", 1)
     client.stop()
 
-    assert ret["command"] == "yes"
-    assert ret["timeout"] == 1
-    assert ret["stdout"] == "yes\n"
+    assert ret["command"] == "echo 'this is not a test'"
+    assert ret["stdout"] == "this is not a test\n"
     assert ret["returncode"] == 0
+    assert ret["timeout"] == 1
 
 
-@pytest.mark.usefixtures("run_server")
-def test_run_cmd_error(mocker):
+@pytest.mark.usefixtures("ssh_server")
+def test_connection_user_password(config):
     """
-    Test run_cmd method raises paramiko.SSHException exception.
+    Test connection using username/password.
     """
-    def my_exec_command(*args, **kwargs):
-        raise paramiko.SSHException("test exception")
+    client = SSHBackend(
+        host=config.hostname,
+        port=config.port,
+        user=config.user,
+        password=os.environ.get("TEST_SSH_PASSWORD", None))
 
-    mocker.patch.object(paramiko.SSHClient, 'exec_command', my_exec_command)
-
-    client = SSHBackend(host="localhost", port=2222)
     client.start()
+    ret = client.run_cmd("echo 'this is not a test'", 1)
+    client.stop()
 
-    with pytest.raises(BackendError):
-        client.run_cmd("yes", 1)
-
-
-@pytest.mark.usefixtures("run_server")
-def test_run_cmd_file_not_found_error(mocker):
-    """
-    Test run_cmd method raises FileNotFoundError exception.
-    """
-    def my_exec_command(*args, **kwargs):
-        raise FileNotFoundError("test exception")
-
-    mocker.patch.object(paramiko.SSHClient, 'exec_command', my_exec_command)
-
-    client = SSHBackend(host="localhost", port=2222)
-    client.start()
-
-    with pytest.raises(BackendError):
-        client.run_cmd("yes", 1)
+    assert ret["command"] == "echo 'this is not a test'"
+    assert ret["stdout"] == "this is not a test\n"
+    assert ret["returncode"] == 0
+    assert ret["timeout"] == 1

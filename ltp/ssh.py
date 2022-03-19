@@ -6,11 +6,9 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import logging
-from paramiko import SSHClient
-from paramiko import AutoAddPolicy
-from paramiko import SSHException
-from .backend import Backend
-from .backend import BackendError
+from ltp.libssh.helper import SSHClient, SSHError
+from ltp.backend import Backend
+from ltp.backend import BackendError
 
 
 class SSHBackend(Backend):
@@ -30,60 +28,66 @@ class SSHBackend(Backend):
         :type password: str
         :param timeout: connection timeout
         :type timeout: int
-        :param key_file: file of the SSH keys
+        :param key_file: private key file path
         :type key_file: str
+        :param key_passphrase: private key passphrase
+        :type key_passphrase: str
         :param ssh_opts: additional SSH options
         :type ssh_opts: str
         """
         self._logger = logging.getLogger("ltp.ssh")
-        self._host = kwargs.get("host", "localhost")
-        self._port = int(kwargs.get("port", "22"))
-        self._user = kwargs.get("user", "root")
-        self._timeout = int(kwargs.get("timeout", "10"))
         self._password = kwargs.get("password", None)
         self._key_file = kwargs.get("key_file", None)
-        self._ssh_opts = kwargs.get("ssh_opts", None)
-        self._client = SSHClient()
+        self._key_passphrase = kwargs.get("key_passphrase", None)
+        self._authenticated = False
+
+        user = kwargs.get("user", None)
+        host = kwargs.get("host", None)
+        port = int(kwargs.get("port", 22))
+        timeout = int(kwargs.get("timeout", 10))
+
+        self._ssh = SSHClient(user, host, port, timeout)
 
         self._logger.debug(
             "host=%s\n"
-            "port=%d\n"
+            "port=%s\n"
             "user=%s\n"
-            "timeout=%d\n"
-            "key_file=%s\n"
-            "ssh_opts='%s'\n",
-            self._host,
-            self._port,
-            self._user,
-            self._timeout,
-            self._key_file,
-            self._ssh_opts)
+            "timeout=%s\n"
+            "key_file=%s\n",
+            host,
+            port,
+            user,
+            timeout,
+            self._key_file)
 
     @property
     def name(self) -> str:
         return "ssh"
 
     def start(self) -> None:
-        self._logger.info("Loading system keys")
-        self._client.load_system_host_keys()
-        self._client.set_missing_host_key_policy(AutoAddPolicy())
-
-        self._logger.info("Connecting to %s:%d", self._host, self._port)
         try:
-            self._client.connect(
-                self._host,
-                port=self._port,
-                username=self._user,
-                password=self._password,
-                key_filename=self._key_file,
-                timeout=self._timeout)
-        except SSHException as err:
-            raise BackendError from err
+            self._ssh.connect()
+
+            if self._password:
+                self._ssh.userauth_password(self._password)
+            elif self._key_file:
+                self._ssh.userauth_privkey(
+                    self._key_file,
+                    self._key_passphrase)
+            else:
+                raise BackendError(
+                    "Authentication method is not supported. "
+                    "Please use pubkey or password authentication.")
+
+            self._authenticated = True
+        except SSHError as err:
+            raise BackendError(err)
 
     def stop(self, _: int = 0) -> None:
-        self._logger.info("Closing connection")
-        self._client.close()
-        self._logger.info("Connection closed")
+        if not self._authenticated:
+            return
+
+        self._ssh.disconnect()
 
     def force_stop(self) -> None:
         self.stop()
@@ -94,34 +98,18 @@ class SSHBackend(Backend):
 
         t_secs = max(timeout, 0)
 
-        self._logger.info("Executing '%s' (timeout=%d)", command, t_secs)
+        retcode, stdout = self._ssh.execute(command, t_secs)
 
-        stdout = None
-        try:
-            _, stdout, _ = self._client.exec_command(
-                command,
-                timeout=t_secs)
-        except SSHException as err:
-            raise BackendError from err
-        except FileNotFoundError as err:
-            # key not found
-            raise BackendError from err
-
-        stdout_str = "\n".join(stdout.readlines())
-        self._logger.debug("stdout=%s", stdout_str)
-
-        retcode = -1
-        if stdout:
-            retcode = stdout.channel.recv_exit_status()
+        self._logger.debug("retcode=%d", retcode)
+        self._logger.debug("stdout=%s", stdout)
 
         ret = {
             "command": command,
-            "stdout": stdout_str,
+            "stdout": stdout,
             "returncode": retcode,
             "timeout": timeout,
         }
 
         self._logger.debug("return data=%s", ret)
-        self._logger.info("Command executed")
 
         return ret
