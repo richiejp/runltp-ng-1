@@ -7,8 +7,8 @@
 """
 import logging
 from ltp.libssh.helper import SSHClient, SSHError
-from ltp.backend import Backend
-from ltp.backend import BackendError
+from .base import Backend
+from .base import BackendError
 
 
 class SSHBackend(Backend):

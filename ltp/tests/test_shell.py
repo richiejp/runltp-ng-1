@@ -4,7 +4,7 @@ Unittest for shell module.
 import time
 import signal
 import threading
-from ltp.shell import ShellBackend
+from ltp.backend import ShellBackend
 
 
 def test_name():

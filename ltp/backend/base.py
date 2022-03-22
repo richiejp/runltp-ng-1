@@ -1,5 +1,5 @@
 """
-.. module:: backend
+.. module:: base
     :platform: Linux
     :synopsis: module containing Backend definition
 

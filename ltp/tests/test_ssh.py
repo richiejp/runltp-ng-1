@@ -8,7 +8,7 @@ import threading
 import subprocess
 import logging
 import pytest
-from ltp.ssh import SSHBackend
+from ltp.backend import SSHBackend
 from ltp.backend import BackendError
 
 

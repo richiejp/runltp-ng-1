@@ -8,8 +8,8 @@
 import os
 import subprocess
 import logging
-from .backend import Backend
-from .backend import BackendError
+from .base import Backend
+from .base import BackendError
 
 
 class ShellBackend(Backend):
