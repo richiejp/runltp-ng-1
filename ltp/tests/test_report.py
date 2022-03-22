@@ -73,7 +73,7 @@ def test_export_to_json_session_run(tmpdir, stdout_msg):
         "skipped": 0,
         "tests": [
                 {
-                    "name": "dir01",
+                    "name": "dir02",
                     "passed": 0,
                     "failed": 1,
                     "warnings": 0,
@@ -92,7 +92,7 @@ def test_export_to_json_session_run(tmpdir, stdout_msg):
         "skipped": 1,
         "tests": [
                 {
-                    "name": "dir01",
+                    "name": "dir03",
                     "passed": 0,
                     "failed": 0,
                     "warnings": 0,
@@ -111,7 +111,7 @@ def test_export_to_json_session_run(tmpdir, stdout_msg):
         "skipped": 0,
         "tests": [
                 {
-                    "name": "dir01",
+                    "name": "dir04",
                     "passed": 0,
                     "failed": 0,
                     "warnings": 0,
@@ -130,7 +130,7 @@ def test_export_to_json_session_run(tmpdir, stdout_msg):
         "skipped": 0,
         "tests": [
                 {
-                    "name": "dir01",
+                    "name": "dir05",
                     "passed": 0,
                     "failed": 0,
                     "warnings": 1,
@@ -194,7 +194,7 @@ def test_export_to_json_session_run_scenario(tmpdir, stdout_msg):
         "skipped": 0,
         "tests": [
                 {
-                    "name": "dir01",
+                    "name": "dir02",
                     "passed": 0,
                     "failed": 1,
                     "warnings": 0,

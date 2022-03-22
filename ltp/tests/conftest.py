@@ -6,12 +6,6 @@ import stat
 import pytest
 
 
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "ssh_password_only: mark test to use SSH password-only server"
-    )
-
-
 @pytest.fixture
 def prepare_tmpdir(tmpdir):
     """
@@ -46,16 +40,16 @@ def prepare_tmpdir(tmpdir):
     suitefile.write("dir01 script.sh 1 0 0 0 0")
 
     suitefile = root.join("dirsuite1")
-    suitefile.write("dir01 script.sh 0 1 0 0 0")
+    suitefile.write("dir02 script.sh 0 1 0 0 0")
 
     suitefile = root.join("dirsuite2")
-    suitefile.write("dir01 script.sh 0 0 0 1 0")
+    suitefile.write("dir03 script.sh 0 0 0 1 0")
 
     suitefile = root.join("dirsuite3")
-    suitefile.write("dir01 script.sh 0 0 1 0 0")
+    suitefile.write("dir04 script.sh 0 0 1 0 0")
 
     suitefile = root.join("dirsuite4")
-    suitefile.write("dir01 script.sh 0 0 0 0 1")
+    suitefile.write("dir05 script.sh 0 0 0 0 1")
 
     # create scenario_groups folder
     scenario_dir = tmpdir.mkdir("scenario_groups")
