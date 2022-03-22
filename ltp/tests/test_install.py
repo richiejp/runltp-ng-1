@@ -17,14 +17,16 @@ SUPPORTED_DISTROS = [pm.distro_id for pm in INSTALLERS]
 @pytest.mark.parametrize("runtime", ["--runtime", ""])
 @pytest.mark.parametrize("m32", ["--m32", ""])
 @pytest.mark.parametrize("cmd", ["--cmd", ""])
-def test_install_run(mocker, distro, build, runtime, m32, cmd):
+@pytest.mark.parametrize("tools", ["--tools", ""])
+def test_install_run(mocker, distro, build, runtime, m32, cmd, tools):
     """
     Test install_run function for __main__
     """
     if distro == "debian" and not shutil.which("dpkg"):
         pytest.xfail("Running system doesn't have dpkg")
 
-    mocker.patch("sys.argv", return_value=['--distro', distro, build, runtime, m32, cmd])
+    mocker.patch("sys.argv", return_value=[
+                 '--distro', distro, build, runtime, m32, cmd, tools])
     main_run()
 
 

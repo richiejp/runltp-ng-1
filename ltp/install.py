@@ -58,6 +58,12 @@ class Installer:
         """
         raise NotImplementedError()
 
+    def get_tools_pkgs(self) -> list:
+        """
+        Return tools libraries packages.
+        """
+        raise NotImplementedError()
+
     @property
     def refresh_cmd(self) -> str:
         """
@@ -135,6 +141,7 @@ class Installer:
         pkgs.extend(self.get_build_pkgs(m32_support))
         pkgs.extend(self.get_runtime_pkgs(m32_support))
         pkgs.extend(self.get_libs_pkgs(m32_support))
+        pkgs.extend(self.get_tools_pkgs())
 
         self._run_cmd(self.refresh_cmd, raise_err=False)
         self._run_cmd(f"{self.install_cmd} {' '.join(pkgs)}")
@@ -223,6 +230,11 @@ class OpenSUSEInstaller(Installer):
 
         return pkgs
 
+    def get_tools_pkgs(self) -> list:
+        return [
+            "libssh4"
+        ]
+
     @property
     def refresh_cmd(self) -> str:
         return "zypper --non-interactive refresh"
@@ -307,6 +319,11 @@ class DebianInstaller(Installer):
 
         return pkgs
 
+    def get_tools_pkgs(self) -> list:
+        return [
+            "libssh-4"
+        ]
+
     @property
     def refresh_cmd(self) -> str:
         return "apt-get -y update"
@@ -384,6 +401,11 @@ class AlpineInstaller(Installer):
             "numactl-dev",
         ]
 
+    def get_tools_pkgs(self) -> list:
+        return [
+            "libssh"
+        ]
+
     @property
     def refresh_cmd(self) -> str:
         return "apk update"
@@ -438,6 +460,11 @@ class FedoraInstaller(Installer):
             pkgs = [pkg + ".i686" for pkg in pkgs]
 
         return pkgs
+
+    def get_tools_pkgs(self) -> list:
+        return [
+            "libssh"
+        ]
 
     @property
     def refresh_cmd(self) -> str:
@@ -506,7 +533,7 @@ def install_run(args: Namespace) -> None:
     """
     Run the installer main command.
     """
-    if not args.build and not args.runtime:
+    if not args.build and not args.runtime and not args.tools:
         print("No packages selected!")
         return
 
@@ -529,6 +556,10 @@ def install_run(args: Namespace) -> None:
 
         if args.runtime:
             pkgs = installer.get_runtime_pkgs(args.m32)
+            msg += " ".join(pkgs)
+
+        if args.tools:
+            pkgs = installer.get_tools_pkgs()
             msg += " ".join(pkgs)
 
         print(msg)
@@ -559,6 +590,10 @@ def init_cmdline(parser: argparse.ArgumentParser) -> None:
         "--runtime",
         action="store_true",
         help="Include runtime packages")
+    parser.add_argument(
+        "--tools",
+        action="store_true",
+        help="Include tools packages")
     parser.add_argument(
         "--cmd",
         action="store_true",
