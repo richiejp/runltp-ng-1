@@ -3,6 +3,9 @@
 name: "CI: test on multiple distro"
 on: [push, pull_request]
 
+env:
+  TEST_SSH_PASSWORD: root
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,34 +17,34 @@ jobs:
           - container: "debian:stable"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip libssh-4 openssh-server
 
           - container: "debian:testing"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip libssh-4 openssh-server
 
           - container: "ubuntu:impish"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip libssh-4 openssh-server
 
           - container: "ubuntu:xenial"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip libssh-4 openssh-server
 
           - container: "fedora:latest"
             env:
-              INSTALL_PYTHON: yum update -y && yum install -y python3-pip
+              INSTALL_PYTHON: yum update -y && yum install -y python3-pip libssh openssh-server
 
           - container: "opensuse/leap"
             env:
-              INSTALL_PYTHON: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install python3-pip
+              INSTALL_PYTHON: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install python3-pip libssh4 openssh-server
 
           - container: "alpine:latest"
             env:
-              INSTALL_PYTHON: apk update && apk add py3-pip
+              INSTALL_PYTHON: apk update && apk add py3-pip libssh openssh-server
 
     container:
       image: ${{ matrix.container }}
