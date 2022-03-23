@@ -2,8 +2,10 @@
 Tests for install module
 """
 import os
+import sys
 import shutil
 import pytest
+from unittest.mock import MagicMock
 import ltp.install
 from ltp.install import main as main_run
 from ltp.install import INSTALLERS
@@ -18,15 +20,15 @@ SUPPORTED_DISTROS = [pm.distro_id for pm in INSTALLERS]
 @pytest.mark.parametrize("m32", ["--m32", ""])
 @pytest.mark.parametrize("cmd", ["--cmd", ""])
 @pytest.mark.parametrize("tools", ["--tools", ""])
-def test_install_run(mocker, distro, build, runtime, m32, cmd, tools):
+def test_install_run(distro, build, runtime, m32, cmd, tools):
     """
     Test install_run function for __main__
     """
     if distro == "debian" and not shutil.which("dpkg"):
         pytest.xfail("Running system doesn't have dpkg")
 
-    mocker.patch("sys.argv", return_value=[
-                 '--distro', distro, build, runtime, m32, cmd, tools])
+    sys.argv = MagicMock(return_value=[
+        '--distro', distro, build, runtime, m32, cmd, tools])
     main_run()
 
 

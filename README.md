@@ -67,7 +67,7 @@ Unit testing
 
 To run unittests, `pytest` has to be installed:
 
-    pip install pytest pytest-mock
+    pip install pytest
     pytest ./ltp/tests
 
 Linting
