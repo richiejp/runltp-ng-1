@@ -29,7 +29,7 @@ class TestLtx:
         p.kill(signal.SIGTERM)
         p.wait()
 
-    def test_ping_nolib(self):
+    def test_ping(self):
         p = spawn('./ltx', timeout=1)
 
         # Ping
