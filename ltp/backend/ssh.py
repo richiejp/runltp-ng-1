@@ -5,6 +5,7 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
+import os
 import logging
 from ltp.libssh.helper import SSHClient, SSHError
 from .base import Backend
@@ -40,6 +41,9 @@ class SSHBackend(Backend):
         self._key_file = kwargs.get("key_file", None)
         self._key_passphrase = kwargs.get("key_passphrase", None)
         self._authenticated = False
+
+        if self._key_file and not os.path.isfile(self._key_file):
+            raise ValueError("private key doesn't exist")
 
         user = kwargs.get("user", None)
         host = kwargs.get("host", None)
@@ -97,8 +101,13 @@ class SSHBackend(Backend):
             raise ValueError("command is empty")
 
         t_secs = max(timeout, 0)
+        retcode = 0
+        stdout = None
 
-        retcode, stdout = self._ssh.execute(command, t_secs)
+        try:
+            retcode, stdout = self._ssh.execute(command, t_secs)
+        except SSHError as err:
+            raise BackendError(err)
 
         self._logger.debug("retcode=%d", retcode)
         self._logger.debug("stdout=%s", stdout)
@@ -107,7 +116,7 @@ class SSHBackend(Backend):
             "command": command,
             "stdout": stdout,
             "returncode": retcode,
-            "timeout": timeout,
+            "timeout": t_secs,
         }
 
         self._logger.debug("return data=%s", ret)

@@ -165,11 +165,48 @@ def ssh_server(tmpdir):
     server.stop()
 
 
-def test_name():
+def test_init(config):
+    """
+    Test class initializer.
+    """
+    with pytest.raises(ValueError):
+        SSHBackend(
+            host=None,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+    with pytest.raises(ValueError):
+        SSHBackend(
+            host=config.hostname,
+            port=-100,
+            user=config.user,
+            key_file=config.user_key)
+
+    with pytest.raises(ValueError):
+        SSHBackend(
+            host=config.hostname,
+            port=config.port,
+            user=None,
+            key_file=config.user_key)
+
+    with pytest.raises(ValueError):
+        SSHBackend(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file="this_key_doesnt_exist.key")
+
+
+def test_name(config):
     """
     Test if name property returns the right name
     """
-    client = SSHBackend()
+    client = SSHBackend(
+        host="127.0.0.2",
+        port=config.port,
+        user=config.user,
+        key_file=config.user_key)
     assert client.name == "ssh"
 
 
@@ -223,13 +260,15 @@ def test_bad_key_file(config):
     """
     Test connection when a bad key file is given.
     """
-    client = SSHBackend(
-        host=config.hostname,
-        port=config.port,
-        user=config.user,
-        key_file="this_key_doesnt_exist.key")
+    testsdir = os.path.abspath(os.path.dirname(__file__))
+    user_key_pub = os.path.sep.join([testsdir, 'id_rsa_bad'])
 
     with pytest.raises(BackendError):
+        client = SSHBackend(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=user_key_pub)
         client.start()
 
 

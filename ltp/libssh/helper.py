@@ -70,11 +70,20 @@ class SSHClient:
         :param timeout: SSH timeout
         :type timeout: int
         """
+        if not user:
+            raise ValueError("username is empty")
+
+        if not host:
+            raise ValueError("hostname is empty")
+
+        if port not in range(1, 65536):
+            raise ValueError("port is out of range")
+
         self._logger = logging.getLogger("ltp.libssh")
         self._user = user
         self._host = host
         self._port = port
-        self._timeout = timeout
+        self._timeout = max(timeout, 0)
         self._session = None
 
     def _raise_session_error(self, msg: str = None):
