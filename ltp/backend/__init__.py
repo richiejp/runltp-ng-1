@@ -9,10 +9,12 @@ from .base import Backend
 from .base import BackendError
 from .shell import ShellBackend
 from .ssh import SSHBackend
+from .serial import SerialBackend
 
 __all__ = [
     "Backend",
     "BackendError",
     "ShellBackend",
     "SSHBackend",
+    "SerialBackend",
 ]
