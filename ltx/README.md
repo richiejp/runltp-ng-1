@@ -24,14 +24,13 @@ the address and undefined behavior sanitizers.
 
 ## Running
 
-To run the tests use `pytest-3.9 test.py`
+To run the tests use `pytest test.py`
 
 ## Messages
 
 LTX is not intended to have a generic MessagePack parser. There are
 several ways in which a message can be encoded. However you can assume
-LTX only accepts the shortest possible encoding. Python's msgpack
-library should take care of this.
+LTX only accepts the shortest possible encoding.
 
 ### Ping
 
