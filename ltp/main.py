@@ -176,6 +176,11 @@ def run() -> None:
         type=str,
         help="URL of the LTP repository")
     ins_parser.add_argument(
+        "--m32",
+        "-m",
+        action="store_true",
+        help="Install LTP using 32bit support")
+    ins_parser.add_argument(
         "--repo-dir",
         "-r",
         type=str,
