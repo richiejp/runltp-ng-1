@@ -50,6 +50,17 @@ struct ltx_pos {
 	const int line;
 };
 
+__attribute__((nonnull, format(printf, 3, 4)))
+static void ltx_fmt(const struct ltx_pos pos,
+		    char *const buf,
+		    size_t buf_len,
+		    const char *const fmt, ...)
+{
+	va_list vali;
+
+	snprintf(buf, buf_len - 1, "[%s:%s:%i] ", pos.file, pos.func, pos.line);
+}
+
 __attribute__((nonnull, format(printf, 2, 3)))
 static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 {
@@ -120,7 +131,6 @@ static void ltx_epoll_add(const int fd, const uint32_t events)
 static void event_loop(void)
 {
 	const char ping[2] = { 0x91, 0x00 };
-	const char pong[2] = { 0x91, 0x01 };
 	char buf[2];
 	const int maxevents = 64;
 	struct epoll_event events[maxevents];
