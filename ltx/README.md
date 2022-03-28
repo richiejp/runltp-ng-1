@@ -26,22 +26,93 @@ the address and undefined behavior sanitizers.
 
 To run the tests use `pytest test.py`
 
+## Architecture
+
+LTX maintains a table of up to 128 process slots indexed from 0
+to 127. Each slot contains some configuration data for running a
+process and the process state (if any). Slots can be reused for
+running processes in serial.
+
+Using only 128 processes allows us to always use msgpack's fixint type
+for the table id. If the SUT can handle more parallel processes than
+this then multiple LTX instances can be created.
+
+The following messages use the `table_id` to specify which slot is
+being mutated or read from. For some messages the `table_id` could be
+`nil` (distinct from a fixint value of 0) in which case the message is
+not associated with a particular table entry.
+
 ## Messages
 
 LTX is not intended to have a generic MessagePack parser. There are
 several ways in which a message can be encoded. However you can assume
 LTX only accepts the shortest possible encoding.
 
+All messages are wrapped in an fixarray. first element is the message
+type which is a positive fixint.
+
+LTX echos messages back to acknowledge them. The host should not echo
+messages back to LTX.
+
 ### Ping
 
-Sent either to LTX or host. Pong is expected in return.
+[0]
 
-ID: 0
-E.g: [0]
+### Env
 
-### Pong
+Sent to LTX to set an environment variable. If no table_id is
+specified then it is set for all.
 
-Response to Ping.
+`table_id`: positive fixint | nil
+`key`: fixstr | str 8
+`value`: fixstr | str 8
 
-ID: 1
-E.g: [1]
+[1, table_id, key, value]
+
+### Exec
+
+Sent to LTX to execute a program. `pathname` is the absolute or
+relative executable path. `argv1...argvn` are the arguments and can be
+omitted. The value for `argv[0]` is extracted from `pathname`.
+
+fixarray is limited to 15 items, so we can not have more than 12
+arguments.
+
+`table_id`: positive fixint
+`pathname`: fixstr | str 8
+`argv[1..12]`: fixstr | str 8
+
+[2, table_id, pathname, argv1, ..., argv12]
+
+### Log
+
+Sent from LTX to the host to log child process output.
+
+table_id: positive fixint
+text: fixstr | str 8
+
+[3, table_id, text]
+
+### Error
+
+Error message sent by LTX to the host. The host should assume that any
+error message is fatal. LTX may continue to send and receive messages
+after an error. However the SUT should be returned to a known good
+state before starting any new tests.
+
+table_id: positive fixint | nil
+text: fixstr | str 8
+
+[4, table_id, text]
+
+### Result
+
+Sent by LTX to the host to indicate the exit status of a process or
+the signal which killed it. If it was a test process then the exit
+status is the overall test result.
+
+See `waitid`.
+
+table_id:  positive fixint
+`si_status`: uint 8
+`si_code`: uint 8
