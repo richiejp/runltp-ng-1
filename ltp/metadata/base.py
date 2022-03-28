@@ -15,60 +15,10 @@ class MetadataError(Exception):
 
 class Metadata:
     """
-    Generic class to handle information on tests and testing suites.
+    This is an implementation used to load testing suite metadata
+    rapresentation. Testing suites are usually defined inside a file that
+    contains all tests information.
     """
-
-    @property
-    def available_suites(self):
-        """
-        Return a list of the available testing suites.
-        :returns: list
-        """
-        raise NotImplementedError()
-
-    @property
-    def available_tests(self):
-        """
-        Return a list of the available tests.
-        :returns: list
-        """
-        raise NotImplementedError()
-
-    def _read_test_impl(self, name: str):
-        """
-        This method has to be inherited to implement `read` method.
-        :param name: name of the test.
-        :type name: str
-        :returns: dict
-        """
-        raise NotImplementedError()
-
-    def read_test(self, name: str):
-        """
-        Return a specific test definition.
-        :param name: name of the test.
-        :type name: str
-        :returns: a dictionary defined as following
-
-            {
-                "name": "mytestname",
-                "command": "mycommand",
-                "arguments": ["-p", "10"],
-            }
-
-        """
-        data = self._read_test_impl(name)
-
-        assert "name" in data
-        assert isinstance(data["name"], str)
-
-        assert "command" in data
-        assert isinstance(data["command"], str)
-
-        assert "arguments" in data
-        assert isinstance(data["arguments"], list)
-
-        return data
 
     def _read_suite_impl(self, name: str):
         """
@@ -79,12 +29,12 @@ class Metadata:
         """
         raise NotImplementedError()
 
-    def read_suite(self, name: str):
+    @staticmethod
+    def _validate(data: dict) -> None:
         """
-        Return a specific testing suite definition.
-        :param name: name of the testing suite.
-        :type name: str
-        :returns: a dictionary defined as following
+        Validate testing suite data rapresentation.
+        :param data: testing suite data rapresentation
+        :type data: a dictionary defined as following
 
             {
                 "name": "mysuite",
@@ -98,12 +48,30 @@ class Metadata:
             }
 
         """
+        if "name" not in data:
+            raise MetadataError("Testing suite name is missing")
+
+        if "tests" not in data:
+            raise MetadataError("Tests list is missing")
+
+        for test in data["tests"]:
+            if "name" not in test:
+                raise MetadataError("Test name is missing")
+
+            if "command" not in test:
+                raise MetadataError("Test command is missing")
+
+            if "arguments" not in test:
+                raise MetadataError("Test arguments are missing")
+
+    def read_suite(self, name: str):
+        """
+        Return a specific testing suite definition.
+        :param name: name of the testing suite.
+        :type name: str
+        :returns: dict
+        """
         data = self._read_suite_impl(name)
-
-        assert "name" in data
-        assert isinstance("name", str)
-
-        assert "tests" in data
-        assert isinstance(data["tests"], list)
+        self._validate(data)
 
         return data
