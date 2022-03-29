@@ -9,6 +9,8 @@ import os
 import logging
 from .base import Metadata
 from .base import MetadataError
+from .base import Suite
+from .base import Test
 
 
 class RuntestMetadata(Metadata):
@@ -24,7 +26,7 @@ class RuntestMetadata(Metadata):
         self._logger = logging.getLogger("ltp.metadata.runtest")
         self._basedir = basedir
 
-    def _read_suite_impl(self, name: str):
+    def read_suite(self, name: str) -> Suite:
         self._logger.info("Collecting testing suite: %s", name)
 
         suite_path = os.path.join(self._basedir, name)
@@ -52,27 +54,23 @@ class RuntestMetadata(Metadata):
                 raise MetadataError(
                     "Test declaration is not defining the command")
 
-            test_data = dict(
-                name=parts[0],
-                command=parts[1],
-                arguments=[]
-            )
+            test_name = parts[0]
+            test_cmd = parts[1]
+            test_args = []
 
             if len(parts) >= 3:
-                test_data["arguments"] = parts[2:]
+                test_args = parts[2:]
 
-            tests.append(test_data)
+            test = Test(test_name, test_cmd, test_args)
+            tests.append(test)
 
-            self._logger.debug("test data: %s", test_data)
+            self._logger.debug("test: %s", test)
 
         self._logger.debug("Collected %d tests", len(tests))
 
-        suite_data = {
-            "name": name,
-            "tests": tests
-        }
+        suite = Suite(name, tests)
 
-        self._logger.debug(suite_data)
+        self._logger.debug(suite)
         self._logger.info("Collected testing suite")
 
-        return suite_data
+        return suite

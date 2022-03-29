@@ -7,6 +7,87 @@
 """
 
 
+class Suite:
+    """
+    Testing suite definition class.
+    """
+
+    def __init__(self, name: str, tests: list) -> None:
+        """
+        :param name: name of the testing suite
+        :type name: str
+        :param tests: tests of the suite
+        :type tests: list
+        """
+        self._name = name
+        self._tests = tests
+
+    def __repr__(self) -> str:
+        return \
+            f"name: '{self._name}'," \
+            f"tests: {self._tests}"
+
+    @property
+    def name(self):
+        """
+        Name of the testing suite.
+        """
+        return self._name
+
+    @property
+    def tests(self):
+        """
+        Tests definitions.
+        """
+        return self._tests
+
+
+class Test:
+    """
+    Test definition class.
+    """
+
+    def __init__(self, name: str, cmd: str, args: list) -> None:
+        """
+        :param name: name of the test
+        :type name: str
+        :param cmd: command to execute
+        :type cmd: str
+        :param args: list of arguments
+        :type args: list(str)
+        """
+        self._name = name
+        self._cmd = cmd
+        self._args = args
+
+    def __repr__(self) -> str:
+        return \
+            f"name: '{self._name}'," \
+            f"commmand: '{self._cmd}'," \
+            f"arguments: {self._args}"
+
+    @property
+    def name(self):
+        """
+        Name of the test.
+        """
+        return self._name
+
+    @property
+    def command(self):
+        """
+        Command to execute test.
+        """
+        return self._cmd
+
+    @property
+    def arguments(self):
+        """
+        Arguments of the command.
+        """
+        return self._args
+
+
 class MetadataError(Exception):
     """
     Raised when a error occurs during metadata operations.
@@ -20,58 +101,11 @@ class Metadata:
     contains all tests information.
     """
 
-    def _read_suite_impl(self, name: str):
-        """
-        This method has to be inherited to implement `read_test_suite` method.
-        :param name: name of the testing suite.
-        :type name: str
-        :returns: dict
-        """
-        raise NotImplementedError()
-
-    @staticmethod
-    def _validate(data: dict) -> None:
-        """
-        Validate testing suite data rapresentation.
-        :param data: testing suite data rapresentation
-        :type data: a dictionary defined as following
-
-            {
-                "name": "mysuite",
-                "tests": [
-                    {
-                        "name": "mytestname",
-                        "command": "mycommand",
-                        "arguments": ["-p", "10"],
-                    }
-                ]
-            }
-
-        """
-        if "name" not in data:
-            raise MetadataError("Testing suite name is missing")
-
-        if "tests" not in data:
-            raise MetadataError("Tests list is missing")
-
-        for test in data["tests"]:
-            if "name" not in test:
-                raise MetadataError("Test name is missing")
-
-            if "command" not in test:
-                raise MetadataError("Test command is missing")
-
-            if "arguments" not in test:
-                raise MetadataError("Test arguments are missing")
-
-    def read_suite(self, name: str):
+    def read_suite(self, name: str) -> Suite:
         """
         Return a specific testing suite definition.
         :param name: name of the testing suite.
         :type name: str
         :returns: dict
         """
-        data = self._read_suite_impl(name)
-        self._validate(data)
-
-        return data
+        raise NotImplementedError()

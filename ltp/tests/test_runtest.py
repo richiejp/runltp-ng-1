@@ -45,55 +45,41 @@ class TestRuntestMetadata:
         Test read_suite method.
         """
         meta = RuntestMetadata(str(tmpdir) + "/runtest")
-        test = meta.read_suite("suite01")
 
-        assert test["name"] == "suite01"
-        assert {
-            "name": "mytest01",
-            "command": "mybin",
-            "arguments":  ['-a'],
-        } in test["tests"]
+        suite = meta.read_suite("suite01")
 
-        assert {
-            "name": "mytest01",
-            "command": "mybin",
-            "arguments":  ['-a'],
-        } in test["tests"]
-        assert {
-            "name": "mytest02",
-            "command": "mybin",
-            "arguments":  ['-b'],
-        } in test["tests"]
-        assert {
-            "name": "mytest03",
-            "command": "mybin",
-            "arguments":  ['-c'],
-        } in test["tests"]
-        assert {
-            "name": "mytest04",
-            "command": "mybin",
-            "arguments":  ['-d'],
-        } in test["tests"]
+        assert suite.name == "suite01"
+        assert suite.tests[0].name == "mytest01"
+        assert suite.tests[0].command == "mybin"
+        assert suite.tests[0].arguments == ['-a']
 
-        test = meta.read_suite("suite02")
-        assert {
-            "name": "mytest05",
-            "command": "mybin",
-            "arguments":  ['-a'],
-        } in test["tests"]
+        assert suite.tests[1].name == "mytest02"
+        assert suite.tests[1].command == "mybin"
+        assert suite.tests[1].arguments == ['-b']
 
-        assert {
-            "name": "mytest06",
-            "command": "mybin",
-            "arguments":  ['-b'],
-        } in test["tests"]
-        assert {
-            "name": "mytest07",
-            "command": "mybin",
-            "arguments":  ['-c'],
-        } in test["tests"]
-        assert {
-            "name": "mytest08",
-            "command": "mybin",
-            "arguments":  ['-d'],
-        } in test["tests"]
+        assert suite.tests[2].name == "mytest03"
+        assert suite.tests[2].command == "mybin"
+        assert suite.tests[2].arguments == ['-c']
+
+        assert suite.tests[3].name == "mytest04"
+        assert suite.tests[3].command == "mybin"
+        assert suite.tests[3].arguments == ['-d']
+
+        suite = meta.read_suite("suite02")
+
+        assert suite.name == "suite02"
+        assert suite.tests[0].name == "mytest05"
+        assert suite.tests[0].command == "mybin"
+        assert suite.tests[0].arguments == ['-a']
+
+        assert suite.tests[1].name == "mytest06"
+        assert suite.tests[1].command == "mybin"
+        assert suite.tests[1].arguments == ['-b']
+
+        assert suite.tests[2].name == "mytest07"
+        assert suite.tests[2].command == "mybin"
+        assert suite.tests[2].arguments == ['-c']
+
+        assert suite.tests[3].name == "mytest08"
+        assert suite.tests[3].command == "mybin"
+        assert suite.tests[3].arguments == ['-d']
