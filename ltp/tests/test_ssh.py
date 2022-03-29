@@ -8,8 +8,8 @@ import threading
 import subprocess
 import logging
 import pytest
-from ltp.backend import SSHBackend
-from ltp.backend import BackendError
+from ltp.runner import SSHRunner
+from ltp.runner import RunnerError
 
 
 class OpenSSHServer:
@@ -170,28 +170,28 @@ def test_init(config):
     Test class initializer.
     """
     with pytest.raises(ValueError):
-        SSHBackend(
+        SSHRunner(
             host=None,
             port=config.port,
             user=config.user,
             key_file=config.user_key)
 
     with pytest.raises(ValueError):
-        SSHBackend(
+        SSHRunner(
             host=config.hostname,
             port=-100,
             user=config.user,
             key_file=config.user_key)
 
     with pytest.raises(ValueError):
-        SSHBackend(
+        SSHRunner(
             host=config.hostname,
             port=config.port,
             user=None,
             key_file=config.user_key)
 
     with pytest.raises(ValueError):
-        SSHBackend(
+        SSHRunner(
             host=config.hostname,
             port=config.port,
             user=config.user,
@@ -202,7 +202,7 @@ def test_name(config):
     """
     Test if name property returns the right name
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host="127.0.0.2",
         port=config.port,
         user=config.user,
@@ -215,13 +215,13 @@ def test_bad_hostname(config):
     """
     Test connection when a bad hostname is given.
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host="127.0.0.2",
         port=config.port,
         user=config.user,
         key_file=config.user_key)
 
-    with pytest.raises(BackendError):
+    with pytest.raises(RunnerError):
         client.start()
 
 
@@ -230,13 +230,13 @@ def test_bad_port(config):
     """
     Test connection when a bad port is given.
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host=config.hostname,
         port=12345,
         user=config.user,
         key_file=config.user_key)
 
-    with pytest.raises(BackendError):
+    with pytest.raises(RunnerError):
         client.start()
 
 
@@ -245,13 +245,13 @@ def test_bad_user(config):
     """
     Test connection when a bad user is given.
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host=config.hostname,
         port=config.port,
         user="this_user_doesnt_exist",
         key_file=config.user_key)
 
-    with pytest.raises(BackendError):
+    with pytest.raises(RunnerError):
         client.start()
 
 
@@ -263,8 +263,8 @@ def test_bad_key_file(config):
     testsdir = os.path.abspath(os.path.dirname(__file__))
     user_key_pub = os.path.sep.join([testsdir, 'id_rsa_bad'])
 
-    with pytest.raises(BackendError):
-        client = SSHBackend(
+    with pytest.raises(RunnerError):
+        client = SSHRunner(
             host=config.hostname,
             port=config.port,
             user=config.user,
@@ -277,13 +277,13 @@ def test_bad_password(config):
     """
     Test connection when a bad password is given.
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host=config.hostname,
         port=config.port,
         user=config.user,
         password="wrong_password")
 
-    with pytest.raises(BackendError):
+    with pytest.raises(RunnerError):
         client.start()
 
 
@@ -292,12 +292,12 @@ def test_bad_auth(config):
     """
     Test a unsupported authentication method.
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host=config.hostname,
         port=config.port,
         user=config.user)
 
-    with pytest.raises(BackendError):
+    with pytest.raises(RunnerError):
         client.start()
 
 
@@ -306,7 +306,7 @@ def test_connection_key_file(config):
     """
     Test connection using key_file.
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host=config.hostname,
         port=config.port,
         user=config.user,
@@ -327,7 +327,7 @@ def test_connection_user_password(config):
     """
     Test connection using username/password.
     """
-    client = SSHBackend(
+    client = SSHRunner(
         host=config.hostname,
         port=config.port,
         user=config.user,

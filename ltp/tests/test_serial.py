@@ -4,8 +4,8 @@ Unittest for serial backend.
 import subprocess
 import unittest.mock
 import pytest
-from ltp.backend import SerialBackend
-from ltp.backend.base import BackendError
+from ltp.runner import SerialRunner
+from ltp.runner.base import RunnerError
 
 
 def test_init():
@@ -13,7 +13,7 @@ def test_init():
     Test class initialization.
     """
     with pytest.raises(ValueError):
-        SerialBackend("")
+        SerialRunner("")
 
 
 def test_name(tmpdir):
@@ -23,7 +23,7 @@ def test_name(tmpdir):
     target = tmpdir / "target"
     target.write("")
 
-    assert SerialBackend(target).name == "serial"
+    assert SerialRunner(target).name == "serial"
 
 
 def test_command(tmpdir):
@@ -53,14 +53,14 @@ def test_command(tmpdir):
             stdout = proc.communicate()[0]
             ftarget.write(stdout.decode("utf-8"))
 
-    transport = SerialBackend(target)
-    transport.start()
+    runner = SerialRunner(target)
+    runner.start()
 
-    transport._file.write = unittest.mock.MagicMock()
-    transport._file.write.side_effect = _emulate_shell
+    runner._file.write = unittest.mock.MagicMock()
+    runner._file.write.side_effect = _emulate_shell
 
-    data = transport.run_cmd("echo 'this-is-not-a-test'", 1)
-    transport.stop()
+    data = runner.run_cmd("echo 'this-is-not-a-test'", 1)
+    runner.stop()
 
     assert data["command"] == "echo 'this-is-not-a-test'"
     assert data["timeout"] == 1
@@ -75,9 +75,9 @@ def test_command_timeout(tmpdir):
     target = tmpdir / "target"
     target.write("")
 
-    transport = SerialBackend(target)
-    transport.start()
+    runner = SerialRunner(target)
+    runner.start()
 
     # we are not handling the command, so we will run out of time anyway
-    with pytest.raises(BackendError):
-        transport.run_cmd("echo 'this-is-not-a-test'", 0.01)
+    with pytest.raises(RunnerError):
+        runner.run_cmd("echo 'this-is-not-a-test'", 0.01)

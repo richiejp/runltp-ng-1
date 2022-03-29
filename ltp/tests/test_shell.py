@@ -4,28 +4,28 @@ Unittest for shell module.
 import time
 import signal
 import threading
-from ltp.backend import ShellBackend
+from ltp.runner import ShellRunner
 
 
 def test_name():
     """
     Test name property.
     """
-    assert ShellBackend().name == "shell"
+    assert ShellRunner().name == "shell"
 
 
 def test_start():
     """
     Test start method.
     """
-    ShellBackend().start()
+    ShellRunner().start()
 
 
 def test_run_cmd():
     """
     Test run_cmd method.
     """
-    ret = ShellBackend().run_cmd("test", 1)
+    ret = ShellRunner().run_cmd("test", 1)
     assert ret["command"] == "test"
     assert ret["returncode"] == 1
     assert ret["stdout"] == ""
@@ -36,7 +36,7 @@ def test_run_cmd_timeout():
     """
     Test run_cmd method.
     """
-    ret = ShellBackend().run_cmd("sleep 10", 0.1)
+    ret = ShellRunner().run_cmd("sleep 10", 0.1)
     assert ret["command"] == "sleep 10"
     assert ret["returncode"] == -signal.SIGKILL
     assert ret["stdout"] == ""
@@ -50,7 +50,7 @@ def test_run_cmd_cwd(tmpdir):
     tmpfile = tmpdir / "myfile"
     tmpfile.write("")
 
-    ret = ShellBackend(cwd=str(tmpdir)).run_cmd("ls", 10)
+    ret = ShellRunner(cwd=str(tmpdir)).run_cmd("ls", 10)
     assert ret["command"] == "ls"
     assert ret["returncode"] == 0
     assert ret["stdout"] == "myfile\n"
@@ -61,7 +61,7 @@ def test_run_cmd_env():
     """
     Test run_cmd method using environment variables.
     """
-    ret = ShellBackend(env=dict(HELLO="world")).run_cmd("echo -n $HELLO", 10)
+    ret = ShellRunner(env=dict(HELLO="world")).run_cmd("echo -n $HELLO", 10)
     assert ret["command"] == "echo -n $HELLO"
     assert ret["returncode"] == 0
     assert ret["stdout"] == "world"
@@ -72,7 +72,7 @@ def test_stop():
     """
     Test stop method.
     """
-    shell = ShellBackend()
+    shell = ShellRunner()
 
     class MyThread(threading.Thread):
         def __init__(self):
@@ -102,7 +102,7 @@ def test_force_stop():
     """
     Test force_stop method.
     """
-    shell = ShellBackend()
+    shell = ShellRunner()
 
     class MyThread(threading.Thread):
         def __init__(self):

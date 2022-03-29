@@ -1,20 +1,20 @@
 """
 .. module:: ssh
     :platform: Linux
-    :synopsis: SSH backend implementation
+    :synopsis: SSH Runner implementation
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
 import logging
 from ltp.libssh.helper import SSHClient, SSHError
-from .base import Backend
-from .base import BackendError
+from .base import Runner
+from .base import RunnerError
 
 
-class SSHBackend(Backend):
+class SSHRunner(Runner):
     """
-    SSH backend implementation class.
+    SSH Runner implementation class.
     """
 
     def __init__(self, **kwargs) -> None:
@@ -36,7 +36,7 @@ class SSHBackend(Backend):
         :param ssh_opts: additional SSH options
         :type ssh_opts: str
         """
-        self._logger = logging.getLogger("ltp.ssh")
+        self._logger = logging.getLogger("ltp.runner.ssh")
         self._password = kwargs.get("password", None)
         self._key_file = kwargs.get("key_file", None)
         self._key_passphrase = kwargs.get("key_passphrase", None)
@@ -79,13 +79,13 @@ class SSHBackend(Backend):
                     self._key_file,
                     self._key_passphrase)
             else:
-                raise BackendError(
+                raise RunnerError(
                     "Authentication method is not supported. "
                     "Please use pubkey or password authentication.")
 
             self._authenticated = True
         except SSHError as err:
-            raise BackendError(err)
+            raise RunnerError(err)
 
     def stop(self, _: int = 0) -> None:
         if not self._authenticated:
@@ -107,7 +107,7 @@ class SSHBackend(Backend):
         try:
             retcode, stdout = self._ssh.execute(command, t_secs)
         except SSHError as err:
-            raise BackendError(err)
+            raise RunnerError(err)
 
         self._logger.debug("retcode=%d", retcode)
         self._logger.debug("stdout=%s", stdout)

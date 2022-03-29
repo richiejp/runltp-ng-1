@@ -1,7 +1,7 @@
 """
 .. module:: serial
     :platform: Linux
-    :synopsis: module containing serial backend definition
+    :synopsis: module containing serial Runner definition
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
@@ -10,11 +10,11 @@ import time
 import string
 import secrets
 import logging
-from .base import Backend
-from .base import BackendError
+from .base import Runner
+from .base import RunnerError
 
 
-class SerialBackend(Backend):
+class SerialRunner(Runner):
     """
     This is not a standard serial I/O protocol communication class, but rather
     a helper class for sessions where a serial hw channel is exposed via file
@@ -27,7 +27,7 @@ class SerialBackend(Backend):
         :param target: file where reading/writing data
         :type target: str
         """
-        self._logger = logging.getLogger("ltp.backend.serial")
+        self._logger = logging.getLogger("ltp.Runner.serial")
         self._target = target
         self._file = None
 
@@ -45,7 +45,7 @@ class SerialBackend(Backend):
         try:
             self._file = open(self._target, 'w+', encoding="utf-8")
         except OSError as err:
-            raise BackendError(err)
+            raise RunnerError(err)
 
         self._logger.info("Target file is opened")
 
@@ -91,7 +91,7 @@ class SerialBackend(Backend):
 
             while True:
                 if 0 < t_secs <= time.time() - start_t:
-                    raise BackendError("Command timed out")
+                    raise RunnerError("Command timed out")
 
                 line = self._file.readline()
                 if not line:
@@ -104,7 +104,7 @@ class SerialBackend(Backend):
 
                 stdout += line
         except OSError as err:
-            raise BackendError(err)
+            raise RunnerError(err)
 
         result = ending.split('-')
         ret = {

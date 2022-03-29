@@ -1,7 +1,7 @@
 """
 .. module:: shell
     :platform: Linux
-    :synopsis: shell backend implementation
+    :synopsis: shell Runner implementation
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
@@ -9,13 +9,13 @@ import os
 import subprocess
 import logging
 from threading import Timer
-from .base import Backend
-from .base import BackendError
+from .base import Runner
+from .base import RunnerError
 
 
-class ShellBackend(Backend):
+class ShellRunner(Runner):
     """
-    Shell backend implementation class.
+    Shell Runner implementation class.
     """
 
     def __init__(self, cwd: str = None, env: dict = None) -> None:
@@ -25,7 +25,7 @@ class ShellBackend(Backend):
         :param env: environment variables
         :type env: dict
         """
-        self._logger = logging.getLogger("ltp.shell")
+        self._logger = logging.getLogger("ltp.runner.shell")
         self._process = None
         self._cwd = cwd
         self._env = env
@@ -39,7 +39,7 @@ class ShellBackend(Backend):
 
     def stop(self, _: int = 0) -> None:
         if not self._process:
-            raise BackendError("No process running")
+            raise RunnerError("No process running")
 
         self._logger.info("Terminating process")
         self._process.terminate()
@@ -47,7 +47,7 @@ class ShellBackend(Backend):
 
     def force_stop(self) -> None:
         if not self._process:
-            raise BackendError("No process running")
+            raise RunnerError("No process running")
 
         self._logger.info("Killing process")
         self._process.kill()
@@ -59,7 +59,7 @@ class ShellBackend(Backend):
                 "Process with pid=%d is already running",
                 self._process.pid)
 
-            raise BackendError("A command is already running")
+            raise RunnerError("A command is already running")
 
         if not command:
             raise ValueError("command is empty")
@@ -115,7 +115,7 @@ class ShellBackend(Backend):
             self._logger.debug("return data=%s", ret)
         except subprocess.TimeoutExpired as err:
             self._process.kill()
-            raise BackendError from err
+            raise RunnerError from err
         finally:
             self._process = None
             if timer:

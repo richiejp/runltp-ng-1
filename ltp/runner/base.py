@@ -1,40 +1,40 @@
 """
 .. module:: base
     :platform: Linux
-    :synopsis: module containing Backend definition
+    :synopsis: module containing Runner definition
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 
 
-class BackendError(Exception):
+class RunnerError(Exception):
     """
-    Raised when an error occurs.
+    Raised when an error occurs inside Runner.
     """
 
 
-class Backend:
+class Runner:
     """
-    A generic backend that has to be inherited to implement a new backend.
+    Runner permits to execute commands on target using a specific protocol.
     """
 
     @property
     def name(self) -> str:
         """
-        Name of the backend.
-        :returns: string naming the backend.
+        Name of the runner.
+        :returns: str
         """
         raise NotImplementedError()
 
     def start(self) -> None:
         """
-        Start backend.
+        Start runner.
         """
         raise NotImplementedError()
 
     def stop(self, timeout: int = 0) -> None:
         """
-        Stop backend.
+        Stop Runner.
         :param timeout: timeout before raising an exception. If 0, no timeout
             will be applied.
         :type timeout: int
@@ -43,14 +43,14 @@ class Backend:
 
     def force_stop(self) -> None:
         """
-        Forcly stop the backend.
+        Forcly stop the Runner.
         """
         raise NotImplementedError()
 
     def _run_cmd_impl(self, command: str, timeout: int) -> dict:
         """
         Run a command on target. This has to be implemented by the class that
-        is inheriting Backend class.
+        is inheriting Runner class.
         :param command: command to execute
         :param timeout: timeout before raising an exception. If 0, no timeout
             will be applied.
@@ -90,7 +90,7 @@ class Backend:
             "timeout" not in ret or \
             "returncode" not in ret or \
                 "stdout" not in ret:
-            raise BackendError(
+            raise RunnerError(
                 "_run_single_test needs to be implemented properly. "
                 "Returned dictionary should contain correct data. "
                 "Please check documentation")
