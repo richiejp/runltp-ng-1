@@ -320,6 +320,7 @@ def test_connection_key_file(config):
     assert ret["stdout"] == "this is not a test\n"
     assert ret["returncode"] == 0
     assert ret["timeout"] == 1
+    assert ret["exec_time"] > 0
 
 
 @pytest.mark.usefixtures("ssh_server")
@@ -341,3 +342,4 @@ def test_connection_user_password(config):
     assert ret["stdout"] == "this is not a test\n"
     assert ret["returncode"] == 0
     assert ret["timeout"] == 1
+    assert ret["exec_time"] > 0

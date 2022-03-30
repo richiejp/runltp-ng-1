@@ -30,17 +30,19 @@ def test_run_cmd():
     assert ret["returncode"] == 1
     assert ret["stdout"] == ""
     assert ret["timeout"] == 1
+    assert ret["exec_time"] > 0
 
 
 def test_run_cmd_timeout():
     """
-    Test run_cmd method.
+    Test run_cmd method when timeout occurs.
     """
     ret = ShellRunner().run_cmd("sleep 10", 0.1)
     assert ret["command"] == "sleep 10"
     assert ret["returncode"] == -signal.SIGKILL
     assert ret["stdout"] == ""
     assert ret["timeout"] == 0.1
+    assert ret["exec_time"] > 0
 
 
 def test_run_cmd_cwd(tmpdir):
@@ -55,6 +57,7 @@ def test_run_cmd_cwd(tmpdir):
     assert ret["returncode"] == 0
     assert ret["stdout"] == "myfile\n"
     assert ret["timeout"] == 10
+    assert ret["exec_time"] > 0
 
 
 def test_run_cmd_env():
@@ -66,6 +69,7 @@ def test_run_cmd_env():
     assert ret["returncode"] == 0
     assert ret["stdout"] == "world"
     assert ret["timeout"] == 10
+    assert ret["exec_time"] > 0
 
 
 def test_stop():
@@ -96,6 +100,7 @@ def test_stop():
     assert ret["returncode"] == -signal.SIGTERM
     assert ret["stdout"] == ""
     assert ret["timeout"] == 20
+    assert ret["exec_time"] > 0
 
 
 def test_force_stop():
@@ -126,3 +131,4 @@ def test_force_stop():
     assert ret["returncode"] == -signal.SIGKILL
     assert ret["stdout"] == ""
     assert ret["timeout"] == 20
+    assert ret["exec_time"] > 0

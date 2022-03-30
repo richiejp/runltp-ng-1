@@ -81,7 +81,8 @@ class SerialRunner(Runner):
 
         stdout = ""
         ending = None
-        start_t = time.time()
+        t_start = time.time()
+        t_end = 0
         t_secs = max(timeout, 0)
 
         try:
@@ -90,7 +91,7 @@ class SerialRunner(Runner):
             self._file.write(cmd_end)
 
             while True:
-                if 0 < t_secs <= time.time() - start_t:
+                if 0 < t_secs <= time.time() - t_start:
                     raise RunnerError("Command timed out")
 
                 line = self._file.readline()
@@ -100,6 +101,7 @@ class SerialRunner(Runner):
                 self._logger.debug("stdout: %s", line.rstrip())
                 if code in line:
                     ending = line
+                    t_end = time.time() - t_start
                     break
 
                 stdout += line
@@ -111,7 +113,8 @@ class SerialRunner(Runner):
             "command": command,
             "timeout": t_secs,
             "returncode": int(result[0]),
-            "stdout": stdout
+            "stdout": stdout,
+            "exec_time": t_end,
         }
 
         self._logger.debug(ret)

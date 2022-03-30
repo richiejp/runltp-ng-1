@@ -66,6 +66,7 @@ def test_command(tmpdir):
     assert data["timeout"] == 1
     assert data["returncode"] == 0
     assert data["stdout"] == "this-is-not-a-test\n"
+    assert data["exec_time"] > 0
 
 
 def test_command_timeout(tmpdir):

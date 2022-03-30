@@ -56,12 +56,15 @@ class Runner:
             will be applied.
         :type timeout: int
         :returns: dictionary containing command execution information
+
             {
                 "command": <mycommand>,
                 "timeout": <timeout>,
                 "returncode": <returncode>,
                 "stdout": <stdout>,
+                "exec_time": <exec_time>,
             }
+
             If None is returned, then callback failed.
         """
         raise NotImplementedError()
@@ -74,12 +77,15 @@ class Runner:
             will be applied.
         :type timeout: int
         :returns: dictionary containing command execution information
+
             {
                 "command": <mycommand>,
                 "timeout": <timeout>,
                 "returncode": <returncode>,
                 "stdout": <stdout>,
+                "exec_time": <exec_time>,
             }
+
             If None is returned, then callback failed.
         """
         ret = self._run_cmd_impl(command, timeout)
@@ -89,7 +95,8 @@ class Runner:
         if "command" not in ret or \
             "timeout" not in ret or \
             "returncode" not in ret or \
-                "stdout" not in ret:
+            "stdout" not in ret or \
+                "exec_time" not in ret:
             raise RunnerError(
                 "_run_single_test needs to be implemented properly. "
                 "Returned dictionary should contain correct data. "

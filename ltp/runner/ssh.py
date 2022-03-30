@@ -6,6 +6,7 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
+import time
 import logging
 from ltp.libssh.helper import SSHClient, SSHError
 from .base import Runner
@@ -101,11 +102,14 @@ class SSHRunner(Runner):
             raise ValueError("command is empty")
 
         t_secs = max(timeout, 0)
+        t_start = time.time()
+        t_end = 0
         retcode = 0
         stdout = None
 
         try:
             retcode, stdout = self._ssh.execute(command, t_secs)
+            t_end = time.time() - t_start
         except SSHError as err:
             raise RunnerError(err)
 
@@ -117,6 +121,7 @@ class SSHRunner(Runner):
             "stdout": stdout,
             "returncode": retcode,
             "timeout": t_secs,
+            "exec_time": t_end,
         }
 
         self._logger.debug("return data=%s", ret)

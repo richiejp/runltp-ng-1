@@ -6,6 +6,7 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
+import time
 import subprocess
 import logging
 from threading import Timer
@@ -85,6 +86,8 @@ class ShellRunner(Runner):
 
         ret = None
         timer = None
+        t_start = time.time()
+        t_end = 0
 
         try:
             stdout = ""
@@ -101,6 +104,7 @@ class ShellRunner(Runner):
             while True:
                 line = self._process.stdout.readline()
                 if not line and self._process.poll() is not None:
+                    t_end = time.time() - t_start
                     break
 
                 self._logger.info(line.rstrip())
@@ -111,6 +115,7 @@ class ShellRunner(Runner):
                 "stdout": stdout,
                 "returncode": self._process.returncode,
                 "timeout": t_secs,
+                "exec_time": t_end,
             }
             self._logger.debug("return data=%s", ret)
         except subprocess.TimeoutExpired as err:
