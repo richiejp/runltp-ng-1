@@ -18,24 +18,21 @@ class RuntestMetadata(Metadata):
     Metadata implementation to handle a LTP runtest file.
     """
 
-    def __init__(self, basedir: str) -> None:
-        """
-        :param basedir: directory where runtest files are stored
-        :type basedir: str
-        """
+    def __init__(self,) -> None:
         self._logger = logging.getLogger("ltp.metadata.runtest")
-        self._basedir = basedir
 
-    def read_suite(self, name: str) -> Suite:
-        self._logger.info("Collecting testing suite: %s", name)
-
-        suite_path = os.path.join(self._basedir, name)
+    def read_suite(self, suite_path: str) -> Suite:
+        if not suite_path:
+            raise ValueError("runtest file path is empty")
 
         if not os.path.isfile(suite_path):
-            raise MetadataError(f"Testing suite doesn't exist in {suite_path}")
+            raise ValueError("runtest file doesn't exist")
+
+        name = os.path.basename(suite_path)
+
+        self._logger.info("Collecting testing suite: %s", name)
 
         lines = []
-
         try:
             with open(suite_path, "r", encoding='UTF-8') as data:
                 lines = data.readlines()
@@ -51,8 +48,7 @@ class RuntestMetadata(Metadata):
 
             parts = line.split()
             if len(parts) < 2:
-                raise MetadataError(
-                    "Test declaration is not defining the command")
+                raise MetadataError("Test declaration is not defining command")
 
             test_name = parts[0]
             test_cmd = parts[1]

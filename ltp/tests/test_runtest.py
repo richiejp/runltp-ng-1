@@ -3,7 +3,6 @@ Unit tests for metadata implementations.
 """
 import pytest
 from ltp.metadata import RuntestMetadata
-from ltp.metadata import MetadataError
 
 
 @pytest.fixture(autouse=True)
@@ -31,22 +30,22 @@ class TestRuntestMetadata:
     Test RuntestMetadata implementations.
     """
 
-    def test_no_read_suite(self, tmpdir):
+    def test_no_read_suite(self):
         """
         Test read_suite method.
         """
-        meta = RuntestMetadata(str(tmpdir) + "/runtest")
+        meta = RuntestMetadata()
 
-        with pytest.raises(MetadataError):
+        with pytest.raises(ValueError):
             meta.read_suite("dirsuiteXYZ")
 
     def test_read_suite(self, tmpdir):
         """
         Test read_suite method.
         """
-        meta = RuntestMetadata(str(tmpdir) + "/runtest")
+        meta = RuntestMetadata()
 
-        suite = meta.read_suite("suite01")
+        suite = meta.read_suite(tmpdir / "runtest" / "suite01")
 
         assert suite.name == "suite01"
         assert suite.tests[0].name == "mytest01"
@@ -65,7 +64,7 @@ class TestRuntestMetadata:
         assert suite.tests[3].command == "mybin"
         assert suite.tests[3].arguments == ['-d']
 
-        suite = meta.read_suite("suite02")
+        suite = meta.read_suite(tmpdir / "runtest" / "suite02")
 
         assert suite.name == "suite02"
         assert suite.tests[0].name == "mytest05"

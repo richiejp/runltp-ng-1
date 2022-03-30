@@ -101,11 +101,11 @@ class Metadata:
     contains all tests information.
     """
 
-    def read_suite(self, name: str) -> Suite:
+    def read_suite(self, suite_path: str) -> Suite:
         """
-        Return a specific testing suite definition.
-        :param name: name of the testing suite.
-        :type name: str
+        Read a testing suite file and return a Suite object.
+        :param suite_path: testing suite file path
+        :type suite_path: str
         :returns: dict
         """
         raise NotImplementedError()
