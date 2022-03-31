@@ -1,3 +1,5 @@
+#include <bits/types/struct_iovec.h>
+#include <endian.h>
 #define _GNU_SOURCE
 
 #include <execinfo.h>
@@ -50,29 +52,83 @@ struct ltx_pos {
 	const int line;
 };
 
-__attribute__((nonnull, format(printf, 3, 4)))
-static void ltx_fmt(const struct ltx_pos pos,
-		    char *const buf,
-		    size_t buf_len,
-		    const char *const fmt, ...)
-{
-	va_list vali;
+struct ltx_buf {
+	size_t used;
+	char data[BUFSIZ];
+};
 
-	snprintf(buf, buf_len - 1, "[%s:%s:%i] ", pos.file, pos.func, pos.line);
+__attribute__((pure, nonnull, warn_unused_result))
+static char *ltx_buf_end(struct ltx_buf *const self)
+{
+	return self->data + self->used;
+}
+
+__attribute__((pure, nonnull, warn_unused_result))
+static size_t ltx_buf_avail(struct ltx_buf *const self)
+{
+	return BUFSIZ - self->used;
+}
+
+__attribute__((nonnull))
+static void ltx_fmt(const struct ltx_pos pos,
+		    struct ltx_buf *const buf,
+		    const char *const fmt,
+		    va_list va)
+{
+	va_list ap;
+
+	buf->used += snprintf(ltx_buf_end(buf), ltx_buf_avail(buf) - 2,
+			      "[%s:%s:%i] ", pos.file, pos.func, pos.line);
+	buf->used += vsnprintf(ltx_buf_end(buf), ltx_buf_avail(buf) - 2, fmt, ap);
+
+	memcpy(ltx_buf_end(buf), "\n\0", 2);
+	buf->used++;
+}
+
+static size_t ltx_log_msg(struct iovec *const iov, const size_t iov_len,
+			  const struct ltx_buf *const buf)
+{
+	char *const head = iov[0].iov_base;
+	size_t len = 0;
+
+	head[len++] = 0x93;
+	head[len++] = 0x02;
+	head[len++] = 0x00;
+
+	if (buf->used < 32) {
+		head[len++] = 0xa0 | buf->used;
+	} else if (buf->used < 256) {
+		head[len++] = buf->used;
+	} else {
+		head[len++] = buf->used >> 8;
+		head[len++] = buf->used;
+	}
+
+	iov[0].iov_len = len;
+
+	iov[1].iov_base = (void *)buf->data;
+	iov[1].iov_len = buf->used;
+
+	return 2;
 }
 
 __attribute__((nonnull, format(printf, 2, 3)))
 static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 {
-	va_list vali;
+	struct ltx_buf buf;
+	va_list ap;
+	const char fixstr[32] = { 0xa0 };
+	const char str8[1 << 7] = { 0xd9 };
+	const char str16[BUFSIZ] = { 0xda };
+	struct iovec iov[3] = {
+		{ "\x93\x02\x03", 3 },
+	};
 
-	fprintf(stderr, "[%s:%s:%i] ", pos.file, pos.func, pos.line);
+	va_start(ap, fmt);
+	ltx_fmt(pos, &buf, fmt, ap);
+	va_end(ap);
 
-	va_start(vali, fmt);
-	vfprintf(stderr, fmt, vali);
-	va_end(vali);
-
-	fprintf(stderr, "\n");
+	write(STDERR_FILENO, buf.data, buf.used);
 }
 
 __attribute__((nonnull, warn_unused_result))
