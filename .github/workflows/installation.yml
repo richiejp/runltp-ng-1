@@ -1,6 +1,6 @@
 # Copyright (c) 2022 Andrea Cervesato <andrea.cervesato@suse.com>
 
-name: "CI: test multiple python versions"
+name: "LTP installation on multiple distro"
 on: [push, pull_request]
 
 jobs:
@@ -10,7 +10,43 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+        include:
+          - container: "debian:stable"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+
+          - container: "debian:testing"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+
+          - container: "ubuntu:impish"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+
+          - container: "ubuntu:xenial"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install python3-pip
+
+          - container: "fedora:latest"
+            env:
+              INSTALL_PYTHON: yum update -y && yum install -y python3-pip
+
+          - container: "opensuse/leap"
+            env:
+              INSTALL_PYTHON: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install python3-pip
+
+          - container: "alpine:latest"
+            env:
+              INSTALL_PYTHON: apk update && apk add py3-pip
+
+    container:
+      image: ${{ matrix.container }}
+      env: ${{ matrix.env }}
+      options: --security-opt seccomp=unconfined
 
     steps:
     - name: Show OS
@@ -19,18 +55,15 @@ jobs:
     - name: Git checkout
       uses: actions/checkout@v1
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+    - name: Install python
+      run: |
+        echo $INSTALL_PYTHON 
+        eval $INSTALL_PYTHON
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install pylint
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pytest
 
-    - name: Test runltp-ng
-      run: ./runltp-ng --help
-
-    - name: Lint with pylint
-      run: pylint --rcfile=pylint.ini ./ltp
+    - name: Test with pytest
+      run: pytest ltp/tests/test_install.py

@@ -1,0 +1,33 @@
+# Copyright (c) 2022 Andrea Cervesato <andrea.cervesato@suse.com>
+
+name: "Test packages"
+on: [push, pull_request]
+
+env:
+  TEST_SSH_PASSWORD: root
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Show OS
+      run: cat /etc/os-release
+
+    - name: Git checkout
+      uses: actions/checkout@v1
+
+    - name: Install python
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install python3-pip libssh-4 openssh-server
+
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pytest
+
+    - name: Test with pytest
+      run: pytest --ignore=ltp/tests/test_install.py
