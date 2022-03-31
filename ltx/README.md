@@ -75,9 +75,6 @@ Sent to LTX to execute a program. `pathname` is the absolute or
 relative executable path. `argv1...argvn` are the arguments and can be
 omitted. The value for `argv[0]` is extracted from `pathname`.
 
-fixarray is limited to 15 items, so we can not have more than 12
-arguments.
-
 `table_id`: positive fixint
 `pathname`: fixstr | str 8
 `argv[1..12]`: fixstr | str 8
