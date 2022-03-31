@@ -9,8 +9,8 @@ from ctypes import c_int
 from ctypes import c_void_p
 from ctypes import c_uint32
 from ctypes import c_char_p
-from ltp.libssh.base import libssh
-from ltp.libssh.types import c_ssh_session, c_ssh_channel
+from libssh.base import libssh
+from libssh.types import c_ssh_session, c_ssh_channel
 
 
 # ssh_channel ssh_channel_new(ssh_session session)

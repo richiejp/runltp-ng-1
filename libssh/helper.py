@@ -8,7 +8,7 @@
 import ctypes
 import logging
 from typing import Any
-from ltp.libssh.constants import (
+from libssh.constants import (
     SSH_AUTH_SUCCESS,
     SSH_OK,
     SSH_OPTIONS_HOST,
@@ -16,7 +16,7 @@ from ltp.libssh.constants import (
     SSH_OPTIONS_TIMEOUT,
     SSH_OPTIONS_USER,
 )
-from ltp.libssh.session import (
+from libssh.session import (
     ssh_connect,
     ssh_disconnect,
     ssh_free,
@@ -32,7 +32,7 @@ from ltp.libssh.session import (
     ssh_key_new,
     ssh_key_free
 )
-from ltp.libssh.channel import (
+from libssh.channel import (
     ssh_channel_new,
     ssh_channel_close,
     ssh_channel_free,
@@ -79,7 +79,7 @@ class SSHClient:
         if port not in range(1, 65536):
             raise ValueError("port is out of range")
 
-        self._logger = logging.getLogger("ltp.libssh")
+        self._logger = logging.getLogger("libssh")
         self._user = user
         self._host = host
         self._port = port

@@ -8,7 +8,7 @@
 import os
 import time
 import logging
-from ltp.libssh.helper import SSHClient, SSHError
+from libssh.helper import SSHClient, SSHError
 from .base import Runner
 from .base import RunnerError
 

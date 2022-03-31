@@ -9,8 +9,8 @@ from ctypes import c_int
 from ctypes import c_void_p
 from ctypes import c_char_p
 from ctypes import POINTER
-from ltp.libssh.base import libssh
-from ltp.libssh.types import c_ssh_session, c_ssh_key
+from libssh.base import libssh
+from libssh.types import c_ssh_session, c_ssh_key
 
 # ssh_session ssh_new(void)
 ssh_new = libssh.ssh_new
