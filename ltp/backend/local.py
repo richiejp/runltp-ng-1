@@ -16,22 +16,26 @@ class LocalBackend(Backend):
     Local backend implementation for host testing.
     """
 
-    def __init__(self, ltp_dir: str, tmp_dir: str = None) -> None:
+    def __init__(self, ltp_dir: str, tmp_dir: str) -> None:
         """
         :param ltp_dir: LTP installation directory
         :type ltp_dir: str
-        :param tmp_dir: temporary directory
+        :param tmp_dir: session temporary directory
         :type tmp_dir: str
         """
         if not ltp_dir or not os.path.isdir(ltp_dir):
             raise ValueError("LTP directory doesn't exist")
 
+        if not tmp_dir or not os.path.isdir(tmp_dir):
+            raise ValueError("Temporary directory doesn't exist")
+
+        tmp_tests = os.path.join(tmp_dir, "local")
+        if not os.path.isdir(tmp_tests):
+            os.mkdir(tmp_tests)
+
         env = {}
-
         env["LTPROOT"] = ltp_dir
-        if tmp_dir:
-            env["TMPDIR"] = tmp_dir
-
+        env["TMPDIR"] = tmp_tests
         env["LTP_COLORIZE_OUTPUT"] = os.environ.get("LTP_COLORIZE_OUTPUT", "y")
 
         # PATH must be set in order to run bash scripts

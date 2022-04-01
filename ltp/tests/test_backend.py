@@ -11,15 +11,21 @@ class TestLocalBackend:
     Test LocalBackend implementation.
     """
 
-    def test_constructor(self):
+    def test_constructor(self, tmpdir):
         """
         Test class constructor.
         """
         with pytest.raises(ValueError):
-            LocalBackend(None)
+            LocalBackend(None, str(tmpdir))
 
         with pytest.raises(ValueError):
-            LocalBackend("this_path_doesnt_exist")
+            LocalBackend("this_path_doesnt_exist", str(tmpdir))
+
+        with pytest.raises(ValueError):
+            LocalBackend(str(tmpdir), None)
+
+        with pytest.raises(ValueError):
+            LocalBackend(str(tmpdir), "this_path_doesnt_exist")
 
     @pytest.mark.usefixtures("prepare_tmpdir")
     def test_communicate(self, tmpdir):
@@ -29,7 +35,7 @@ class TestLocalBackend:
         tmp = tmpdir / "tmp"
         tmp.mkdir()
 
-        backend = LocalBackend(str(tmpdir), tmp_dir=str(tmp))
+        backend = LocalBackend(str(tmpdir), str(tmp))
         downloader, runner = backend.communicate()
 
         assert downloader is not None
