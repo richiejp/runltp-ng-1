@@ -9,6 +9,7 @@ import os
 from ltp.downloader import LocalDownloader
 from ltp.runner import ShellRunner
 from .base import Backend
+from .base import BackendFactory
 
 
 class LocalBackend(Backend):
@@ -53,3 +54,29 @@ class LocalBackend(Backend):
 
     def force_stop(self) -> None:
         pass
+
+
+class LocalBackendFactory(BackendFactory):
+    """
+    LocalBackend factory class.
+    """
+
+    def __init__(self, ltp_dir: str, tmp_dir: str) -> None:
+        """
+        :param ltp_dir: LTP installation directory
+        :type ltp_dir: str
+        :param tmp_dir: session temporary directory
+        :type tmp_dir: str
+        """
+        if not ltp_dir or not os.path.isdir(ltp_dir):
+            raise ValueError("LTP directory doesn't exist")
+
+        if not tmp_dir or not os.path.isdir(tmp_dir):
+            raise ValueError("Temporary directory doesn't exist")
+
+        self._ltp_dir = ltp_dir
+        self._tmp_dir = tmp_dir
+
+    def create(self) -> Backend:
+        backend = LocalBackend(self._ltp_dir, self._tmp_dir)
+        return backend

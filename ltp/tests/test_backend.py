@@ -2,7 +2,9 @@
 Unittests for Backend package.
 """
 import pytest
+from ltp.backend import Backend
 from ltp.backend import LocalBackend
+from ltp.backend import LocalBackendFactory
 from ltp.metadata import RuntestMetadata
 
 
@@ -54,3 +56,28 @@ class TestLocalBackend:
 
             assert result is not None
             assert result["returncode"] == 0
+
+    def test_factory_bad_args(self, tmpdir):
+        """
+        Test LocalBackendFactory create() method with bad arguments.
+        """
+        with pytest.raises(ValueError):
+            LocalBackendFactory(None, str(tmpdir))
+
+        with pytest.raises(ValueError):
+            LocalBackendFactory("this_folder_doesnt_exist", str(tmpdir))
+
+        with pytest.raises(ValueError):
+            LocalBackendFactory(str(tmpdir), None)
+
+        with pytest.raises(ValueError):
+            LocalBackendFactory(str(tmpdir), "this_folder_doesnt_exist")
+
+    def test_factory(self, tmpdir):
+        """
+        Test LocalBackendFactory create() method with good arguments..
+        """
+        factory = LocalBackendFactory(str(tmpdir), str(tmpdir))
+        backend = factory.create()
+
+        assert isinstance(backend, Backend)

@@ -7,10 +7,14 @@
 """
 from .base import Backend
 from .base import BackendError
+from .base import BackendFactory
 from .local import LocalBackend
+from .local import LocalBackendFactory
 
 __all__ = [
     "Backend",
     "BackendError",
+    "BackendFactory",
     "LocalBackend",
+    "LocalBackendFactory",
 ]

@@ -38,3 +38,15 @@ class Backend:
         Force stopping the current backend session.
         """
         raise NotImplementedError()
+
+
+class BackendFactory:
+    """
+    Create Factory implementations instances.
+    """
+
+    def create(self) -> Backend:
+        """
+        Create a new Backend object.
+        """
+        raise NotImplementedError()
