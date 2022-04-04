@@ -18,11 +18,11 @@ Commands
 
 Some basic commands are the following:
 
-    # show testing suites
-    ./runltp-ng list
+    # show testing suites on local host
+    ./runltp-ng host --list
 
-    # run syscalls and dio testing suite
-    ./runltp-ng run --suites syscalls dio
+    # run syscalls and dio testing suites
+    ./runltp-ng host -s syscalls -s dio
 
     # show packages to build LTP on the current system
     ./runltp-ng show-deps --build

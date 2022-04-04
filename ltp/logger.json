@@ -29,22 +29,22 @@
                 "info_handler"
             ]
         },
-        "ltp.report": {
+        "ltp.runner.serial": {
             "handlers": [
                 "info_handler"
             ]
         },
-        "ltp.test": {
+        "ltp.runner.shell": {
             "handlers": [
                 "info_handler"
             ]
         },
-        "ltp.suite": {
+        "ltp.dispatcher.serial": {
             "handlers": [
                 "info_handler"
             ]
         },
-        "ltp.session": {
+        "ltp.downloader.local": {
             "handlers": [
                 "info_handler"
             ]

@@ -6,42 +6,42 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
-import logging
-import logging.config
 import json
+import logging
 import argparse
+import tempfile
 import platform
+import logging.config
 from argparse import Namespace
 
 import ltp.install
-from ltp.report import export_to_json
-from ltp.session import LTPSession
+from ltp import LTPException
+from ltp.install import InstallerError
+from ltp.backend import LocalBackendFactory
+from ltp.dispatcher import SerialDispatcher
+from ltp.dispatcher import SuiteResults
 
 
-def _print_results(session: LTPSession) -> None:
+def _print_results(suite_results: SuiteResults) -> None:
     """
-    Print session results.
+    Print suite results.
     """
     logger = logging.getLogger("ltp.main")
 
-    tests = 0
-    for suite in session.suites:
-        if suite.completed:
-            for test in suite.tests:
-                if test.completed:
-                    tests += 1
-
+    tests = len(suite_results.tests_results)
     kernver = platform.uname().release
     arch = platform.architecture()[0]
     hostname = platform.uname().node
 
     logger.info("")
+    logger.info("Suite name: %s", suite_results.suite.name)
     logger.info("Total Run: %d", tests)
-    logger.info("Total Passed Tests: %d", session.passed)
-    logger.info("Total Failed Tests: %d", session.failed)
-    logger.info("Total Skipped Tests: %d", session.skipped)
-    logger.info("Total Broken Tests: %d", session.broken)
-    logger.info("Total Warnings: %d", session.warnings)
+    logger.info("Elapsed time: %.1f seconds", suite_results.exec_time)
+    logger.info("Total Passed Tests: %d", suite_results.passed)
+    logger.info("Total Failed Tests: %d", suite_results.failed)
+    logger.info("Total Skipped Tests: %d", suite_results.skipped)
+    logger.info("Total Broken Tests: %d", suite_results.broken)
+    logger.info("Total Warnings: %d", suite_results.warnings)
     logger.info("Kernel Version:: %s", kernver)
     logger.info("Machine Architecture: %s", arch)
     logger.info("Hostname: %s", hostname)
@@ -60,58 +60,56 @@ def _init_logging() -> None:
         logging.config.dictConfig(data)
 
 
-def _ltp_list(args: Namespace) -> None:
+def _ltp_host(args: Namespace) -> None:
     """
-    Handle "list" subcommand.
+    Handle "run-host" subcommand.
     """
-    session = LTPSession()
-    suites = []
-
-    if args.default:
-        suites = session.suites_from_scenario(scenario="default")
-    elif args.network:
-        suites = session.suites_from_scenario(scenario="network")
-    else:
-        suites = session.suites_from_scenario()
-
     logger = logging.getLogger("ltp.main")
-    logger.info("Testing suites:\n")
-    for suite in suites:
-        logger.info("\t%s", suite.name)
-    logger.info("")
+    ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
+    tmpdir = os.environ.get("TMPDIR", tempfile.mktemp(prefix="runltp-"))
+    if not os.path.isdir(tmpdir):
+        os.mkdir(tmpdir)
 
+    try:
+        if args.list:
+            runtestdir = os.path.join(ltpdir, "runtest")
+            suites = [name for name in os.listdir(runtestdir)
+                      if os.path.isfile(os.path.join(runtestdir, name))]
 
-def _ltp_run(args: Namespace) -> None:
-    """
-    Handle "run" subcommand.
-    """
-    session = LTPSession()
+            logger.info("Available tests:\n")
+            for suite in suites:
+                logger.info("\t%s", suite)
 
-    if args.default:
-        session.run_scenario(scenario="default")
-    elif args.network:
-        session.run_scenario(scenario="network")
-    elif args.all:
-        session.run()
-    elif args.suites:
-        session.run(args.suites)
+            logger.info("")
+        else:
+            factory = LocalBackendFactory(ltpdir, tmpdir)
+            dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
 
-    _print_results(session)
+            results = dispatcher.exec_suites(args.run_suite)
 
-    if args.json_report:
-        export_to_json(session, args.json_report)
+            for result in results:
+                _print_results(result)
+
+            # TODO: Export to json
+    except LTPException as err:
+        logger.error("Error: %s", str(err))
 
 
 def _ltp_install(args: Namespace) -> None:
     """
     Handle "install" subcommand.
     """
-    installer = ltp.install.get_installer()
-    installer.install(
-        args.m32,
-        args.repo_url,
-        args.repo_dir,
-        args.install_dir)
+    logger = logging.getLogger("ltp.main")
+
+    try:
+        installer = ltp.install.get_installer()
+        installer.install(
+            args.m32,
+            args.repo_url,
+            args.repo_dir,
+            args.install_dir)
+    except InstallerError as err:
+        logger.error("Error: %s", str(err))
 
 
 def run() -> None:
@@ -124,48 +122,24 @@ def run() -> None:
     subparsers = parser.add_subparsers()
 
     # run subcommand parsing
-    run_parser = subparsers.add_parser("run")
-    run_parser.set_defaults(func=_ltp_run)
-    run_parser.add_argument(
-        "--all",
-        "-a",
+    host_parser = subparsers.add_parser("host")
+    host_parser.set_defaults(func=_ltp_host)
+    host_parser.add_argument(
+        "--list",
+        "-l",
         action="store_true",
-        help="run all test suites")
-    run_parser.add_argument(
-        "--default",
-        "-d",
-        action="store_true",
-        help="run default testing scenario")
-    run_parser.add_argument(
-        "--network",
-        "-n",
-        action="store_true",
-        help="run network testing scenario")
-    run_parser.add_argument(
-        "--suites",
+        help="List available testing suites")
+    host_parser.add_argument(
+        "--run-suite",
         "-s",
         type=str,
         nargs="*",
-        help="testing suites to run")
-    run_parser.add_argument(
+        help="Run testing suites on host")
+    host_parser.add_argument(
         "--json-report",
         "-j",
         type=str,
         help="JSON output report")
-
-    # list subcommand parsing
-    list_parser = subparsers.add_parser("list")
-    list_parser.set_defaults(func=_ltp_list)
-    list_parser.add_argument(
-        "--default",
-        "-d",
-        action="store_true",
-        help="list default testing scenario")
-    list_parser.add_argument(
-        "--network",
-        "-n",
-        action="store_true",
-        help="list network testing scenario")
 
     # install subcommand parsing
     ins_parser = subparsers.add_parser("install")
