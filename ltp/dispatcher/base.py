@@ -294,13 +294,6 @@ class Dispatcher:
         return result
 
     @property
-    def available_suites(self) -> list:
-        """
-        Returns the list of available testing suites.
-        """
-        raise NotImplementedError()
-
-    @property
     def is_running(self) -> bool:
         """
         Returns True if dispatcher is running tests. False otherwise.
