@@ -5,9 +5,10 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
+from ltp import LTPException
 
 
-class RunnerError(Exception):
+class RunnerError(LTPException):
     """
     Raised when an error occurs inside Runner.
     """

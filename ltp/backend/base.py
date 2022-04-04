@@ -5,9 +5,10 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
+from ltp import LTPException
 
 
-class BackendError(Exception):
+class BackendError(LTPException):
     """
     Raised when an error occurs into Backend.
     """

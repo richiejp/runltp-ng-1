@@ -6,6 +6,7 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import re
+from ltp import LTPException
 from ltp.metadata import Suite
 from ltp.metadata import Test
 
@@ -221,7 +222,7 @@ class SuiteResults(Results):
         return self._get_result("warnings")
 
 
-class DispatcherError(Exception):
+class DispatcherError(LTPException):
     """
     Raised when a error occurs during dispatcher operations.
     """

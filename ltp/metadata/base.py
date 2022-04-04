@@ -5,6 +5,7 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
+from ltp import LTPException
 
 
 class Suite:
@@ -88,7 +89,7 @@ class Test:
         return self._args
 
 
-class MetadataError(Exception):
+class MetadataError(LTPException):
     """
     Raised when a error occurs during metadata operations.
     """

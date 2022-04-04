@@ -5,9 +5,10 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
+from ltp import LTPException
 
 
-class DownloaderError(Exception):
+class DownloaderError(LTPException):
     """
     Raised when an error occurs during download.
     """
