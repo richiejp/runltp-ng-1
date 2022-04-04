@@ -8,6 +8,7 @@
 import os
 from ltp.backend import BackendFactory
 from ltp.metadata import RuntestMetadata
+from ltp.metadata.base import MetadataError
 from .base import SuiteResults
 from .base import Dispatcher
 
@@ -44,26 +45,34 @@ class SerialDispatcher(Dispatcher):
             raise ValueError("Backend factory is empty")
 
     @property
+    def available_suites(self) -> list:
+        runtest_dir = os.path.join(self._ltpdir, "runtest")
+
+        suites = []
+        files = [os.path.join(runtest_dir, fname)
+                 for fname in os.listdir(runtest_dir)
+                 if os.path.isfile(os.path.join(runtest_dir, fname))]
+
+        for fsuite in files:
+            try:
+                suite = self._metadata.read_suite(fsuite)
+                if suite:
+                    name = os.path.basename(fsuite)
+                    suites.append(name)
+            except MetadataError:
+                continue
+
+        return suites
+
+    @property
     def is_running(self) -> bool:
-        """
-        Returns True if dispatcher is running tests. False otherwise.
-        """
         return self._is_running
 
     def stop(self) -> None:
-        """
-        Stop the current execution.
-        """
         self._stop = True
 
     # pylint: disable=too-many-locals
     def exec_suites(self, suites: list) -> list:
-        """
-        Execute a list of testing suites.
-        :param suites: list of Suite objects
-        :type suites: list(str)
-        :returns: list(SuiteResults)
-        """
         if not suites:
             raise ValueError("suites list is empty")
 
