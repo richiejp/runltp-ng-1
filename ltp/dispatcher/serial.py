@@ -46,6 +46,10 @@ class SerialDispatcher(Dispatcher):
             raise ValueError("Backend factory is empty")
 
     def _read_available_suites(self, runner: Runner) -> list:
+        """
+        Read the available testing suites by looking at runtest folder using
+        ls command.
+        """
         runtest_dir = os.path.join(self._ltpdir, "runtest")
 
         ret = runner.run_cmd(f"ls {runtest_dir}", 10)
