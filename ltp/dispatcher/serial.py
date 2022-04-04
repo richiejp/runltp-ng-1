@@ -6,10 +6,12 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
+from ltp.runner import Runner
 from ltp.backend import BackendFactory
 from ltp.metadata import RuntestMetadata
-from .base import SuiteResults
 from .base import Dispatcher
+from .base import DispatcherError
+from .base import SuiteResults
 
 
 class SerialDispatcher(Dispatcher):
@@ -43,27 +45,29 @@ class SerialDispatcher(Dispatcher):
         if not self._backend_factory:
             raise ValueError("Backend factory is empty")
 
+    def _read_available_suites(self, runner: Runner) -> list:
+        runtest_dir = os.path.join(self._ltpdir, "runtest")
+
+        ret = runner.run_cmd(f"ls {runtest_dir}", 10)
+
+        retcode = ret["returncode"]
+        if retcode != 0:
+            raise DispatcherError("Can't read runtest folder")
+
+        stdout = ret["stdout"]
+        suites = [name.rstrip() for name in stdout.split("\n")]
+
+        return suites
+
     @property
     def is_running(self) -> bool:
-        """
-        Returns True if dispatcher is running tests. False otherwise.
-        """
         return self._is_running
 
     def stop(self) -> None:
-        """
-        Stop the current execution.
-        """
         self._stop = True
 
     # pylint: disable=too-many-locals
     def exec_suites(self, suites: list) -> list:
-        """
-        Execute a list of testing suites.
-        :param suites: list of Suite objects
-        :type suites: list(str)
-        :returns: list(SuiteResults)
-        """
         if not suites:
             raise ValueError("suites list is empty")
 
@@ -73,6 +77,7 @@ class SerialDispatcher(Dispatcher):
             os.mkdir(tmp_suites)
 
         self._is_running = True
+        avail_suites = []
         results = []
 
         try:
@@ -82,6 +87,16 @@ class SerialDispatcher(Dispatcher):
 
                 backend = self._backend_factory.create()
                 downloader, runner = backend.communicate()
+
+                if not avail_suites:
+                    avail_suites = self._read_available_suites(runner)
+
+                if suite_name not in avail_suites:
+                    raise DispatcherError(
+                        f"'{suite_name}' is not available. "
+                        "Available suites are: "
+                        f"{' '.join(avail_suites)}"
+                    )
 
                 # download testing suite inside temporary directory
                 # TODO: handle different metadata

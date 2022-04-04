@@ -2,6 +2,7 @@
 Unit tests for dispatcher implementations.
 """
 import pytest
+from ltp.dispatcher import DispatcherError
 from ltp.dispatcher import SerialDispatcher
 from ltp.backend import LocalBackendFactory
 
@@ -36,6 +37,9 @@ class TestSerialDispatcher:
 
         with pytest.raises(ValueError):
             dispatcher.exec_suites(None)
+
+        with pytest.raises(DispatcherError):
+            dispatcher.exec_suites(["this_suite_doesnt_exist"])
 
     @pytest.mark.usefixtures("prepare_tmpdir")
     def test_exec_suites(self, tmpdir):
