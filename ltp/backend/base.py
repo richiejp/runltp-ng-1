@@ -22,8 +22,9 @@ class Backend:
 
     def communicate(self) -> set:
         """
-        Start communicating with the backend and it returns a set of objects to
-        communicate with it.
+        Start communicating with the backend and it returns Downloader and
+        Runner implementations to communicate. If backend is already running,
+        the current Downloader and Runner implementations will be given.
         :returns: Downloader, Runner
         """
         raise NotImplementedError()
