@@ -9,9 +9,9 @@ import os
 from ltp.runner import Runner
 from ltp.backend import BackendFactory
 from ltp.metadata import RuntestMetadata
+from ltp.results import SuiteResults
 from .base import Dispatcher
 from .base import DispatcherError
-from .base import SuiteResults
 
 
 class SerialDispatcher(Dispatcher):
