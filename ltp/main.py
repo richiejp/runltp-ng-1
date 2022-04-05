@@ -7,10 +7,10 @@
 """
 import os
 import json
-import logging
 import argparse
 import tempfile
 import platform
+import logging
 import logging.config
 from argparse import Namespace
 
@@ -19,7 +19,8 @@ from ltp import LTPException
 from ltp.install import InstallerError
 from ltp.backend import LocalBackendFactory
 from ltp.dispatcher import SerialDispatcher
-from ltp.dispatcher import SuiteResults
+from ltp.results import SuiteResults
+from ltp.results import JSONExporter
 
 
 def _print_results(suite_results: SuiteResults) -> None:
@@ -90,7 +91,10 @@ def _ltp_host(args: Namespace) -> None:
             for result in results:
                 _print_results(result)
 
-            # TODO: Export to json
+            if args.json_report:
+                backend = factory.create()
+                exporter = JSONExporter()
+                exporter.save_file(backend, results, args.json_report)
     except LTPException as err:
         logger.error("Error: %s", str(err))
 
