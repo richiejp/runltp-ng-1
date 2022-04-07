@@ -8,8 +8,13 @@ Quickstart
 ==========
 
 You can get help with `./runltp-ng --help`.
-Be sure to have properly set LTPROOT variable before running the commmand if you
-are not already in the LTP folder.
+
+The following environment variables are supported and they can be used to
+customize the runner behavior:
+
+- `LTPROOT`: root of LTP installation
+- `TMPDIR`: temporary directory for the tests
+- `LTP_COLORIZE_OUTPUT`: tells LTP to show colors
 
 > **_NOTE:_**  All features are experimental and they are under development.
 
@@ -26,6 +31,9 @@ Some basic commands are the following:
 
     # show packages to build LTP on the current system
     ./runltp-ng show-deps --build
+
+    # show testing suites on local host
+    LTPROOT=/opt/alternative_ltp ./runltp-ng host --list
 
 Please use `--help` to check all available options for the commands above.
 
@@ -46,16 +54,6 @@ The following Linux distro are supported:
 - Ubuntu
 - Fedora
 - Alpine
-
-Environment
------------
-
-The following environment variables are supported and they can be used to
-customize the runner behavior:
-
-- `LTPROOT`: root of LTP installation
-- `TMPDIR`: temporary directory for the tests
-- `LTP_COLORIZE_OUTPUT`: tells LTP to show colors
 
 Development
 ===========
