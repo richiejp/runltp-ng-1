@@ -69,6 +69,7 @@ class SerialRunner(Runner):
                       for _ in range(length))
         return out
 
+    # pylint: disable=too-many-locals
     def _run_cmd_impl(self, command: str, timeout: int) -> dict:
         if not command:
             raise ValueError("command is empty")
@@ -78,9 +79,10 @@ class SerialRunner(Runner):
         cmd = f"{command}\n"
         code = self._generate_string()
         cmd_end = f"echo $?-{code}\n"
+        matcher = re.compile(f"(?P<retcode>\\d+)-{code}")
 
         stdout = ""
-        ending = None
+        retcode = None
         t_start = time.time()
         t_end = 0
         t_secs = max(timeout, 0)
@@ -99,8 +101,9 @@ class SerialRunner(Runner):
                     continue
 
                 self._logger.debug("stdout: %s", line.rstrip())
-                if re.search(f"\\d+-{code}", line):
-                    ending = line
+                match = matcher.match(line)
+                if match:
+                    retcode = match.group("retcode")
                     t_end = time.time() - t_start
                     break
 
@@ -108,11 +111,10 @@ class SerialRunner(Runner):
         except OSError as err:
             raise RunnerError(err)
 
-        result = ending.split('-')
         ret = {
             "command": command,
             "timeout": t_secs,
-            "returncode": int(result[0]),
+            "returncode": int(retcode),
             "stdout": stdout,
             "exec_time": t_end,
         }
