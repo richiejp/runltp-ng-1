@@ -5,11 +5,12 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
-import os
+import re
 import time
 import string
 import secrets
 import logging
+from typing import IO
 from .base import Runner
 from .base import RunnerError
 
@@ -19,20 +20,25 @@ class SerialRunner(Runner):
     This is not a standard serial I/O protocol communication class, but rather
     a helper class for sessions where a serial hw channel is exposed via file
     descriptor. This is really common in a qemu session, where console is
-    mounted in the host system via file descriptor.
+    exposed in the host system via file descriptor.
     """
 
-    def __init__(self, target: str) -> None:
+    def __init__(self, stdout: IO, stdin: IO) -> None:
         """
-        :param target: file where reading/writing data
-        :type target: str
+        :param stdin: standard input file handler
+        :type stdin: IO
+        :param stdout: standard output file handler
+        :type stdout: IO
         """
         self._logger = logging.getLogger("ltp.Runner.serial")
-        self._target = target
-        self._file = None
+        self._stdin = stdin
+        self._stdout = stdout
 
-        if not os.path.isfile(self._target):
-            raise ValueError("target file doesn't exist")
+        if not self._stdin:
+            raise ValueError("stdin is empty")
+
+        if not self._stdout:
+            raise ValueError("stdout is empty")
 
     @property
     def name(self) -> str:
@@ -40,22 +46,16 @@ class SerialRunner(Runner):
 
     # pylint: disable=consider-using-with
     def start(self) -> None:
-        self._logger.info("Opening target file: %s", self._target)
-
-        try:
-            self._file = open(self._target, 'w+', encoding="utf-8")
-        except OSError as err:
-            raise RunnerError(err)
-
-        self._logger.info("Target file is opened")
+        pass
 
     def stop(self, _: int = 0) -> None:
-        if not self._file:
+        if not self._stdin or not self._stdout:
             return
 
-        self._logger.info("Closing target file: %s", self._target)
-        self._file.close()
-        self._logger.info("Target file is closed")
+        self._logger.info("Closing stdin/stdout")
+        self._stdout.close()
+        self._stdin.close()
+        self._logger.info("stdin/stdout are closed")
 
     def force_stop(self) -> None:
         self.stop()
@@ -86,20 +86,20 @@ class SerialRunner(Runner):
         t_secs = max(timeout, 0)
 
         try:
-            self._file.flush()
-            self._file.write(cmd)
-            self._file.write(cmd_end)
+            self._stdin.write(cmd)
+            self._stdin.write(cmd_end)
+            self._stdin.flush()
 
             while True:
                 if 0 < t_secs <= time.time() - t_start:
                     raise RunnerError("Command timed out")
 
-                line = self._file.readline()
+                line = self._stdout.readline()
                 if not line:
                     continue
 
                 self._logger.debug("stdout: %s", line.rstrip())
-                if code in line:
+                if re.search(f"\\d+-{code}", line):
                     ending = line
                     t_end = time.time() - t_start
                     break

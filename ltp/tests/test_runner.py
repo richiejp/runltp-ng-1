@@ -349,12 +349,19 @@ class TestSerialRunner:
     Test SerialRunner class.
     """
 
-    def test_init(self):
+    def test_init(self, tmpdir):
         """
         Test class initialization.
         """
-        with pytest.raises(ValueError):
-            SerialRunner("")
+        target = tmpdir / "target"
+        target.write("")
+
+        with open(target, "r+") as ftarget:
+            with pytest.raises(ValueError):
+                SerialRunner(None, ftarget)
+
+            with pytest.raises(ValueError):
+                SerialRunner(ftarget, None)
 
     def test_name(self, tmpdir):
         """
@@ -363,7 +370,8 @@ class TestSerialRunner:
         target = tmpdir / "target"
         target.write("")
 
-        assert SerialRunner(target).name == "serial"
+        with open(target, "r+") as ftarget:
+            assert SerialRunner(ftarget, ftarget).name == "serial"
 
     def test_command(self, tmpdir):
         """
@@ -372,40 +380,41 @@ class TestSerialRunner:
         target = tmpdir / "target"
         target.write("")
 
-        data = None
+        with open(target, "r+") as mytarget:
+            data = None
 
-        def _emulate_shell(cmd):
-            """
-            Simple mock that gets command, execute it and write into target
-            file. This function overrides TextIOWrapper::write method.
-            """
-            if not cmd:
-                raise ValueError("command is empty")
+            def _emulate_shell(cmd):
+                """
+                Simple mock that gets command, execute it and write into target
+                file. This function overrides TextIOWrapper::write method.
+                """
+                if not cmd:
+                    raise ValueError("command is empty")
 
-            with open(target, 'a+') as ftarget:
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    shell=True)
+                with open(target, 'a+') as ftarget:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        shell=True)
 
-                stdout = proc.communicate()[0]
-                ftarget.write(stdout.decode("utf-8"))
+                    stdout = proc.communicate()[0]
+                    ftarget.write(stdout.decode("utf-8"))
 
-        runner = SerialRunner(target)
-        runner.start()
+            runner = SerialRunner(mytarget, mytarget)
+            runner.start()
 
-        runner._file.write = unittest.mock.MagicMock()
-        runner._file.write.side_effect = _emulate_shell
+            runner._stdin.write = unittest.mock.MagicMock()
+            runner._stdin.write.side_effect = _emulate_shell
 
-        data = runner.run_cmd("echo 'this-is-not-a-test'", 1)
-        runner.stop()
+            data = runner.run_cmd("echo 'this-is-not-a-test'", 1)
+            runner.stop()
 
-        assert data["command"] == "echo 'this-is-not-a-test'"
-        assert data["timeout"] == 1
-        assert data["returncode"] == 0
-        assert data["stdout"] == "this-is-not-a-test\n"
-        assert data["exec_time"] > 0
+            assert data["command"] == "echo 'this-is-not-a-test'"
+            assert data["timeout"] == 1
+            assert data["returncode"] == 0
+            assert data["stdout"] == "this-is-not-a-test\n"
+            assert data["exec_time"] > 0
 
     def test_command_timeout(self, tmpdir):
         """
@@ -414,12 +423,13 @@ class TestSerialRunner:
         target = tmpdir / "target"
         target.write("")
 
-        runner = SerialRunner(target)
-        runner.start()
+        with open(target, "r+") as mytarget:
+            runner = SerialRunner(mytarget, mytarget)
+            runner.start()
 
-        # we are not handling the command, so we will run out of time anyway
-        with pytest.raises(RunnerError):
-            runner.run_cmd("echo 'this-is-not-a-test'", 0.01)
+            # we are not handling the command, so we will run out of time
+            with pytest.raises(RunnerError):
+                runner.run_cmd("echo 'this-is-not-a-test'", 0.01)
 
 
 class TestShellRunner:
