@@ -30,7 +30,7 @@ class SerialRunner(Runner):
         :param stdout: standard output file handler
         :type stdout: IO
         """
-        self._logger = logging.getLogger("ltp.Runner.serial")
+        self._logger = logging.getLogger("ltp.runner.serial")
         self._stdin = stdin
         self._stdout = stdout
 
@@ -100,7 +100,8 @@ class SerialRunner(Runner):
                 if not line:
                     continue
 
-                self._logger.debug("stdout: %s", line.rstrip())
+                self._logger.info(line.rstrip())
+
                 match = matcher.match(line)
                 if match:
                     retcode = match.group("retcode")
