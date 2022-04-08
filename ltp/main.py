@@ -9,7 +9,6 @@ import os
 import json
 import argparse
 import tempfile
-import platform
 import logging
 import logging.config
 from argparse import Namespace
