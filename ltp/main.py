@@ -30,9 +30,6 @@ def _print_results(suite_results: SuiteResults) -> None:
     logger = logging.getLogger("ltp.main")
 
     tests = len(suite_results.tests_results)
-    kernver = platform.uname().release
-    arch = platform.architecture()[0]
-    hostname = platform.uname().node
 
     logger.info("")
     logger.info("Suite name: %s", suite_results.suite.name)
@@ -43,9 +40,10 @@ def _print_results(suite_results: SuiteResults) -> None:
     logger.info("Total Skipped Tests: %d", suite_results.skipped)
     logger.info("Total Broken Tests: %d", suite_results.broken)
     logger.info("Total Warnings: %d", suite_results.warnings)
-    logger.info("Kernel Version:: %s", kernver)
-    logger.info("Machine Architecture: %s", arch)
-    logger.info("Hostname: %s", hostname)
+    logger.info("Kernel Version: %s", suite_results.kernel)
+    logger.info("Machine Architecture: %s", suite_results.arch)
+    logger.info("Distro: %s", suite_results.distro)
+    logger.info("Distro version: %s", suite_results.distro_ver)
     logger.info("")
 
 
