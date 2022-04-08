@@ -4,7 +4,6 @@ Unit tests for results package.
 import json
 
 import pytest
-from ltp.backend import LocalBackend
 from ltp.metadata.base import Suite, Test
 from ltp.results import JSONExporter
 from ltp.results.base import SuiteResults, TestResults
@@ -19,24 +18,21 @@ class TestJSONExporter:
         """
         Test save_file method with bad arguments.
         """
-        backend = LocalBackend(str(tmpdir), str(tmpdir))
         exporter = JSONExporter()
 
         with pytest.raises(ValueError):
-            exporter.save_file(None, list(), "")
+            exporter.save_file(list(), "")
 
         with pytest.raises(ValueError):
-            exporter.save_file(backend, None, "")
+            exporter.save_file(None, "")
 
         with pytest.raises(ValueError):
-            exporter.save_file(backend, [0, 1], None)
+            exporter.save_file([0, 1], None)
 
     def test_save_file(self, tmpdir):
         """
         Test save_file method.
         """
-        backend = LocalBackend(str(tmpdir), str(tmpdir))
-
         # create suite/test metadata objects
         tests = [
             Test("ls0", "ls", ""),
@@ -84,26 +80,40 @@ class TestJSONExporter:
         ]
 
         suite_res = [
-            SuiteResults(suite=suite0, tests=tests_res),
-            SuiteResults(suite=suite1, tests=tests_res)
+            SuiteResults(
+                suite=suite0,
+                tests=tests_res,
+                distro="openSUSE-Leap",
+                distro_ver="15.3",
+                kernel="5.17",
+                arch="x86_64"),
+            SuiteResults(
+                suite=suite1,
+                tests=tests_res,
+                distro="openSUSE-Leap",
+                distro_ver="15.3",
+                kernel="5.17",
+                arch="x86_64"),
         ]
 
         output = tmpdir / "output.json"
 
         exporter = JSONExporter()
-        exporter.save_file(backend, suite_res, str(output))
+        exporter.save_file(suite_res, str(output))
 
         data = None
         with open(str(output), 'r') as json_data:
             data = json.load(json_data)
 
         # first suite
-        assert data["sut"]["arch"] is not None
-        assert data["sut"]["distro"] is not None
-        assert data["sut"]["distro_ver"] is not None
-        assert data["sut"]["kernel"] is not None
         assert len(data["suites"]) == 2
         assert data["suites"][0]["name"] == "ls_suite0"
+        assert data["suites"][0]["sut"] == {
+            "distro": "openSUSE-Leap",
+            "distro_ver": "15.3",
+            "kernel": "5.17",
+            "arch": "x86_64"
+        }
         assert data["suites"][0]["results"] == {
             "exec_time": 3,
             "passed": 2,
@@ -156,6 +166,12 @@ class TestJSONExporter:
 
         # second suite
         assert data["suites"][1]["name"] == "ls_suite1"
+        assert data["suites"][1]["sut"] == {
+            "distro": "openSUSE-Leap",
+            "distro_ver": "15.3",
+            "kernel": "5.17",
+            "arch": "x86_64"
+        }
         assert data["suites"][1]["results"] == {
             "exec_time": 3,
             "passed": 2,

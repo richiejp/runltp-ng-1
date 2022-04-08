@@ -5,7 +5,6 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
-from ltp.backend.base import Backend
 from ltp.metadata import Test
 from ltp.metadata import Suite
 
@@ -163,9 +162,21 @@ class SuiteResults(Results):
         :type suite: Suite
         :param tests: List of the tests results
         :type tests: list(TestResults)
+        :param distro: distribution name
+        :type distro: str
+        :param distro_ver: distribution version
+        :type distro_ver: str
+        :param kernel: kernel version
+        :type kernel: str
+        :param arch: OS architecture
+        :type arch: str
         """
         self._suite = kwargs.get("suite", None)
         self._tests = kwargs.get("tests", [])
+        self._distro = kwargs.get("distro", None)
+        self._distro_ver = kwargs.get("distro_ver", None)
+        self._kernel = kwargs.get("kernel", None)
+        self._arch = kwargs.get("arch", None)
 
         if not self._suite:
             raise ValueError("Empty suite object")
@@ -195,6 +206,34 @@ class SuiteResults(Results):
             res += getattr(test, attr)
 
         return res
+
+    @property
+    def distro(self) -> str:
+        """
+        Distribution name.
+        """
+        return self._distro
+
+    @property
+    def distro_ver(self) -> str:
+        """
+        Distribution version.
+        """
+        return self._distro_ver
+
+    @property
+    def kernel(self) -> str:
+        """
+        Kernel version.
+        """
+        return self._kernel
+
+    @property
+    def arch(self) -> str:
+        """
+        Operating system architecture.
+        """
+        return self._arch
 
     @property
     def exec_time(self) -> float:
@@ -232,16 +271,10 @@ class Exporter:
     A class used to export Results into report file.
     """
 
-    def save_file(
-            self,
-            backend: Backend,
-            results: list,
-            path: str) -> None:
+    def save_file(self, results: list, path: str) -> None:
         """
         Save report into a file by taking information from SUT and testing
         results.
-        :param backend: backend to communicate and get information on target.
-        :type backend: Backend
         :param results: list of suite results to export.
         :type results: list(SuiteResults)
         :param path: path of the file to save.

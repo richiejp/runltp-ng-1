@@ -8,7 +8,6 @@
 import os
 import json
 import logging
-from ltp.backend import Backend
 from ltp.runner import Runner
 from .base import Exporter
 from .base import ExporterError
@@ -36,14 +35,7 @@ class JSONExporter(Exporter):
         return stdout
 
     # pylint: disable=too-many-locals
-    def save_file(
-            self,
-            backend: Backend,
-            results: list,
-            path: str) -> None:
-        if not backend:
-            raise ValueError("backend is None")
-
+    def save_file(self, results: list, path: str) -> None:
         if not results:
             raise ValueError("results is empty")
 
@@ -55,34 +47,18 @@ class JSONExporter(Exporter):
 
         self._logger.info("Exporting JSON report into %s", path)
 
-        data = {}
-
-        # read backend information
-        # TODO: memory? disk?
-        _, runner = backend.communicate()
-
-        distro_str = self._read_sut_info(
-            runner, ". /etc/os-release; echo \"$ID\"")
-        distro_ver_str = self._read_sut_info(
-            runner, ". /etc/os-release; echo \"$VERSION_ID\"")
-        kernel_str = self._read_sut_info(
-            runner, "uname -s -r -v")
-        arch_str = self._read_sut_info(
-            runner, "uname -m")
-
-        data["sut"] = {
-            "distro": distro_str,
-            "distro_ver": distro_ver_str,
-            "kernel": kernel_str,
-            "arch": arch_str,
-        }
-
         # add results information
         data_suites = []
 
         for result in results:
             data_suite = {}
             data_suite["name"] = result.suite.name
+            data_suite["sut"] = {
+                "distro": result.distro,
+                "distro_ver": result.distro_ver,
+                "kernel": result.kernel,
+                "arch": result.arch
+            }
             data_suite["results"] = {
                 "exec_time": result.exec_time,
                 "failed": result.failed,
@@ -111,6 +87,7 @@ class JSONExporter(Exporter):
             data_suite["tests"] = data_tests
             data_suites.append(data_suite)
 
+        data = {}
         data["suites"] = data_suites
 
         with open(path, "w+", encoding='UTF-8') as outfile:
