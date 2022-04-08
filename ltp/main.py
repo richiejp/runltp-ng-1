@@ -92,9 +92,8 @@ def _ltp_host(args: Namespace) -> None:
                 _print_results(result)
 
             if args.json_report:
-                backend = factory.create()
                 exporter = JSONExporter()
-                exporter.save_file(backend, results, args.json_report)
+                exporter.save_file(results, args.json_report)
     except LTPException as err:
         logger.error("Error: %s", str(err))
 

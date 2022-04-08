@@ -63,6 +63,19 @@ class SerialDispatcher(Dispatcher):
 
         return suites
 
+    @staticmethod
+    def _read_sut_info(runner: Runner, cmd) -> str:
+        """
+        Read SUT information using command runner.
+        """
+        ret = runner.run_cmd(cmd, 10)
+        if ret["returncode"] != 0:
+            raise DispatcherError(f"Can't read information from SUT: {cmd}")
+
+        stdout = ret["stdout"].rstrip()
+
+        return stdout
+
     @property
     def is_running(self) -> bool:
         return self._is_running
@@ -129,7 +142,23 @@ class SerialDispatcher(Dispatcher):
                     tests_results.append(test_results)
 
                 # create suite results
-                suite_results = SuiteResults(suite=suite, tests=tests_results)
+                distro_str = self._read_sut_info(
+                    runner, ". /etc/os-release; echo \"$ID\"")
+                distro_ver_str = self._read_sut_info(
+                    runner, ". /etc/os-release; echo \"$VERSION_ID\"")
+                kernel_str = self._read_sut_info(
+                    runner, "uname -s -r -v")
+                arch_str = self._read_sut_info(
+                    runner, "uname -m")
+
+                suite_results = SuiteResults(
+                    suite=suite,
+                    tests=tests_results,
+                    distro=distro_str,
+                    distro_ver=distro_ver_str,
+                    kernel=kernel_str,
+                    arch=arch_str)
+
                 results.append(suite_results)
         finally:
             self._is_running = False
