@@ -23,16 +23,23 @@ class SerialRunner(Runner):
     exposed in the host system via file descriptor.
     """
 
-    def __init__(self, stdout: IO, stdin: IO) -> None:
+    def __init__(self,
+                 stdout: IO,
+                 stdin: IO,
+                 ignore_echo: bool = True) -> None:
         """
         :param stdin: standard input file handler
         :type stdin: IO
         :param stdout: standard output file handler
         :type stdout: IO
+        :param ignore_echo: if True, echoed commands will be ignored
+        :type ignore_echo: bool
         """
         self._logger = logging.getLogger("ltp.runner.serial")
         self._stdin = stdin
         self._stdout = stdout
+        self._ignore_echo = ignore_echo
+        self._stop = False
 
         if not self._stdin:
             raise ValueError("stdin is empty")
@@ -49,13 +56,8 @@ class SerialRunner(Runner):
         pass
 
     def stop(self, _: int = 0) -> None:
-        if not self._stdin or not self._stdout:
-            return
-
-        self._logger.info("Closing stdin/stdout")
-        self._stdout.close()
-        self._stdin.close()
-        self._logger.info("stdin/stdout are closed")
+        self._logger.info("Stopping command")
+        self._stop = True
 
     def force_stop(self) -> None:
         self.stop()
@@ -75,6 +77,7 @@ class SerialRunner(Runner):
             raise ValueError("command is empty")
 
         self._logger.info("Running command: %s", command)
+        self._stop = False
 
         cmd = f"{command}\n"
         code = self._generate_string()
@@ -92,7 +95,7 @@ class SerialRunner(Runner):
             self._stdin.write(cmd_end)
             self._stdin.flush()
 
-            while True:
+            while not self._stop:
                 if 0 < t_secs <= time.time() - t_start:
                     raise RunnerError("Command timed out")
 
@@ -100,7 +103,8 @@ class SerialRunner(Runner):
                 if not line:
                     continue
 
-                self._logger.info(line.rstrip())
+                if self._ignore_echo and line in [cmd, cmd_end]:
+                    continue
 
                 match = matcher.match(line)
                 if match:
@@ -108,9 +112,15 @@ class SerialRunner(Runner):
                     t_end = time.time() - t_start
                     break
 
+                self._logger.info(line.rstrip())
+
                 stdout += line
         except OSError as err:
             raise RunnerError(err)
+
+        if self._stop:
+            retcode = 1
+            t_end = time.time() - t_start
 
         ret = {
             "command": command,
