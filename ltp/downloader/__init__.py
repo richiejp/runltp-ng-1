@@ -8,9 +8,11 @@
 from .base import Downloader
 from .base import DownloaderError
 from .local import LocalDownloader
+from .transport import TransportDownloader
 
 __all__ = [
     "Downloader",
     "DownloaderError",
     "LocalDownloader",
+    "TransportDownloader",
 ]
