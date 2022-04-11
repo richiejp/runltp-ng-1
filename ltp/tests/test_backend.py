@@ -1,11 +1,16 @@
 """
 Unittests for Backend package.
 """
+import os
 import pytest
 from ltp.backend import Backend
 from ltp.backend import LocalBackend
 from ltp.backend import LocalBackendFactory
+from ltp.backend import QemuBackend
 from ltp.metadata import RuntestMetadata
+
+TEST_QEMU_IMAGE = os.environ.get("TEST_QEMU_IMAGE", None)
+TEST_QEMU_PASSWORD = os.environ.get("TEST_QEMU_PASSWORD", None)
 
 
 class TestLocalBackend:
@@ -81,3 +86,122 @@ class TestLocalBackend:
         backend = factory.create()
 
         assert isinstance(backend, Backend)
+
+
+@pytest.mark.skipif(TEST_QEMU_IMAGE is None, reason="TEST_QEMU_IMAGE is not defined")
+@pytest.mark.skipif(TEST_QEMU_PASSWORD is None, reason="TEST_QEMU_IMAGE is not defined")
+@pytest.mark.parametrize("image", [TEST_QEMU_IMAGE])
+@pytest.mark.parametrize("password", [TEST_QEMU_PASSWORD])
+class TestQemuBackend:
+    """
+    Test QemuBackend implementation.
+    """
+
+    @pytest.mark.parametrize("serial", ["isa", "virtio"])
+    def test_communicate_runner(self, tmpdir, image, password, serial):
+        """
+        Test communicate method and use runner object to execute
+        commands on target.
+        """
+        backend = QemuBackend(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password,
+            serial=serial)
+
+        try:
+            _, runner = backend.communicate()
+
+            assert runner is not None
+
+            for _ in range(0, 100):
+                ret = runner.run_cmd("echo 'hello world'", 1)
+                assert 'hello world\n' in ret["stdout"]
+                assert ret["returncode"] == 0
+                assert ret["exec_time"] > 0
+                assert ret["timeout"] == 1
+                assert ret["command"] == "echo 'hello world'"
+        finally:
+            backend.stop()
+
+    @pytest.mark.parametrize("serial", ["isa", "virtio"])
+    def test_communicate_downloader(self, tmpdir, image, password, serial):
+        """
+        Test communicate method and use downloader object to download
+        files from target to host.
+        """
+        backend = QemuBackend(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password,
+            serial=serial)
+
+        try:
+            downloader, runner = backend.communicate()
+
+            assert runner is not None
+            assert downloader is not None
+
+            for i in range(0, 100):
+                target_path = f"/root/myfile{i}"
+                local_path = str(tmpdir / f"myfile{i}")
+                message = f"hello world{i}"
+
+                # create file on target_path
+                ret = runner.run_cmd(f"echo '{message}' > {target_path}", 1)
+                assert ret["returncode"] == 0
+
+                # download file in local_path
+                downloader.fetch_file(target_path, local_path)
+                with open(local_path, "r") as target:
+                    assert target.read() == f"{message}\n"
+        finally:
+            backend.stop()
+
+    def test_communicate_image_overlay(self, tmpdir, image, password):
+        """
+        Test communicate method when using image_overlay.
+        """
+        img_overlay = tmpdir / "image_overlay.qcow2"
+
+        backend = QemuBackend(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password,
+            image_overlay=img_overlay)
+
+        try:
+            backend.communicate()
+        finally:
+            backend.stop()
+
+        assert os.path.isfile(img_overlay)
+
+    def test_communicate_virtfs(self, tmpdir, image, password):
+        """
+        Test communicate method when using virtfs.
+        """
+        myfile = tmpdir / "myfile"
+        myfile.write("")
+
+        backend = QemuBackend(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password,
+            virtfs=str(tmpdir))
+
+        try:
+            _, runner = backend.communicate()
+
+            ret = runner.run_cmd("mkdir -p /mnt/dir9p", 1)
+            assert ret["returncode"] == 0
+
+            ret = runner.run_cmd(
+                "mount -t 9p -o "
+                "trans=virtio,version=9p2000.L host0 /mnt/dir9p", 10)
+            assert ret["returncode"] == 0
+
+            ret = runner.run_cmd(f"test -f /mnt/dir9p/myfile", 1)
+            assert ret["returncode"] == 0
+        finally:
+            backend.stop()

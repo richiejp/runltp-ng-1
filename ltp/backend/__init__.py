@@ -10,6 +10,8 @@ from .base import BackendError
 from .base import BackendFactory
 from .local import LocalBackend
 from .local import LocalBackendFactory
+from .qemu import QemuBackend
+from .qemu import QemuBackendFactory
 
 __all__ = [
     "Backend",
@@ -17,4 +19,6 @@ __all__ = [
     "BackendFactory",
     "LocalBackend",
     "LocalBackendFactory",
+    "QemuBackend",
+    "QemuBackendFactory",
 ]
