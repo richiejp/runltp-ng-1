@@ -64,6 +64,10 @@ def _ltp_host(args: Namespace) -> None:
     Handle "host" subcommand.
     """
     logger = logging.getLogger("ltp.main")
+
+    if args.json_report and os.path.exists(args.json_report):
+        logger.error("JSON report file already exists")
+
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
     tmpdir = os.environ.get("TMPDIR", tempfile.mktemp(prefix="runltp-"))
     if not os.path.isdir(tmpdir):
@@ -101,9 +105,9 @@ def _ltp_qemu(args: Namespace) -> None:
     Handle "qemu" subcommand.
     """
     logger = logging.getLogger("ltp.main")
-    if not args.image:
-        logger.error("No image is given. Please use --image option.")
-        return
+
+    if args.json_report and os.path.exists(args.json_report):
+        logger.error("JSON report file already exists")
 
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
     tmpdir = os.environ.get("TMPDIR", tempfile.mktemp(prefix="runltp-"))
