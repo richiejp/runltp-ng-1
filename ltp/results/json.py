@@ -8,7 +8,6 @@
 import os
 import json
 import logging
-from ltp.runner import Runner
 from .base import Exporter
 from .base import ExporterError
 
@@ -20,19 +19,6 @@ class JSONExporter(Exporter):
 
     def __init__(self) -> None:
         self._logger = logging.getLogger("ltp.results.json")
-
-    @staticmethod
-    def _read_sut_info(runner: Runner, cmd) -> str:
-        """
-        Read SUT information using command runner.
-        """
-        ret = runner.run_cmd(cmd, 10)
-        if ret["returncode"] != 0:
-            raise ExporterError(f"Can't read information from SUT: {cmd}")
-
-        stdout = ret["stdout"].rstrip()
-
-        return stdout
 
     # pylint: disable=too-many-locals
     def save_file(self, results: list, path: str) -> None:
