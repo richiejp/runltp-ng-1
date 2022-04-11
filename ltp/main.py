@@ -17,6 +17,7 @@ import ltp.install
 from ltp import LTPException
 from ltp.install import InstallerError
 from ltp.backend import LocalBackendFactory
+from ltp.backend import QemuBackendFactory
 from ltp.dispatcher import SerialDispatcher
 from ltp.results import SuiteResults
 from ltp.results import JSONExporter
@@ -60,7 +61,7 @@ def _init_logging() -> None:
 
 def _ltp_host(args: Namespace) -> None:
     """
-    Handle "run-host" subcommand.
+    Handle "host" subcommand.
     """
     logger = logging.getLogger("ltp.main")
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
@@ -91,6 +92,45 @@ def _ltp_host(args: Namespace) -> None:
             if args.json_report:
                 exporter = JSONExporter()
                 exporter.save_file(results, args.json_report)
+    except LTPException as err:
+        logger.error("Error: %s", str(err))
+
+
+def _ltp_qemu(args: Namespace) -> None:
+    """
+    Handle "qemu" subcommand.
+    """
+    logger = logging.getLogger("ltp.main")
+    if not args.image:
+        logger.error("No image is given. Please use --image option.")
+        return
+
+    ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
+    tmpdir = os.environ.get("TMPDIR", tempfile.mktemp(prefix="runltp-"))
+    if not os.path.isdir(tmpdir):
+        os.mkdir(tmpdir)
+
+    try:
+        factory = QemuBackendFactory(
+            ltpdir=ltpdir,
+            tmpdir=tmpdir,
+            image=args.image,
+            image_overlay=args.image_overlay,
+            password=args.password,
+            system=args.system,
+            ram=args.ram,
+            smp=args.smp,
+            serial=args.serial_type)
+
+        dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
+        results = dispatcher.exec_suites(args.run_suite)
+
+        for result in results:
+            _print_results(result)
+
+        if args.json_report:
+            exporter = JSONExporter()
+            exporter.save_file(results, args.json_report)
     except LTPException as err:
         logger.error("Error: %s", str(err))
 
@@ -134,8 +174,66 @@ def run() -> None:
         "-s",
         type=str,
         nargs="*",
+        required=True,
         help="Run testing suites on host")
     host_parser.add_argument(
+        "--json-report",
+        "-j",
+        type=str,
+        help="JSON output report")
+
+    # run subcommand parsing
+    qemu_parser = subparsers.add_parser("qemu")
+    qemu_parser.set_defaults(func=_ltp_qemu)
+    qemu_parser.add_argument(
+        "--image",
+        "-i",
+        type=str,
+        required=True,
+        help="Qemu image")
+    qemu_parser.add_argument(
+        "--image-overlay",
+        "-o",
+        type=str,
+        help="Qemu image overlay")
+    qemu_parser.add_argument(
+        "--password",
+        "-p",
+        type=str,
+        default="root",
+        help="Qemu root password. Default: root")
+    qemu_parser.add_argument(
+        "--system",
+        "-a",
+        type=str,
+        default="x86_64",
+        help="Qemu system. Default: x86_64")
+    qemu_parser.add_argument(
+        "--ram",
+        "-r",
+        type=str,
+        default="1.5G",
+        help="Qemu RAM. Default: 1.5G")
+    qemu_parser.add_argument(
+        "--smp",
+        "-c",
+        type=str,
+        default="2",
+        help="Qemu number of CPUs. Default: 2")
+    qemu_parser.add_argument(
+        "--serial-type",
+        "-t",
+        type=str,
+        default="isa",
+        help="Qemu serial protocol type. Default: isa")
+    qemu_parser.add_argument(
+        "--run-suite",
+        "-s",
+        type=str,
+        nargs="*",
+        required=True,
+        help="Run testing suites in Qemu VM")
+    qemu_parser.add_argument(
         "--json-report",
         "-j",
         type=str,
