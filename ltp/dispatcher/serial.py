@@ -52,7 +52,7 @@ class SerialDispatcher(Dispatcher):
         """
         runtest_dir = os.path.join(self._ltpdir, "runtest")
 
-        ret = runner.run_cmd(f"ls {runtest_dir}", 10)
+        ret = runner.run_cmd(f"ls -1 {runtest_dir}", 2)
 
         retcode = ret["returncode"]
         if retcode != 0:
@@ -103,63 +103,67 @@ class SerialDispatcher(Dispatcher):
                     break
 
                 backend = self._backend_factory.create()
-                downloader, runner = backend.communicate()
 
-                if not avail_suites:
-                    avail_suites = self._read_available_suites(runner)
+                try:
+                    downloader, runner = backend.communicate()
 
-                if suite_name not in avail_suites:
-                    raise DispatcherError(
-                        f"'{suite_name}' is not available. "
-                        "Available suites are: "
-                        f"{' '.join(avail_suites)}"
-                    )
+                    if not avail_suites:
+                        avail_suites = self._read_available_suites(runner)
 
-                # download testing suite inside temporary directory
-                # TODO: handle different metadata
-                target = os.path.join(self._ltpdir, "runtest", suite_name)
-                local = os.path.join(tmp_suites, suite_name)
-                downloader.fetch_file(target, local)
+                    if suite_name not in avail_suites:
+                        raise DispatcherError(
+                            f"'{suite_name}' is not available. "
+                            "Available suites are: "
+                            f"{' '.join(avail_suites)}"
+                        )
 
-                # convert testing suites files
-                suite = self._metadata.read_suite(local)
+                    # download testing suite inside temporary directory
+                    # TODO: handle different metadata
+                    target = os.path.join(self._ltpdir, "runtest", suite_name)
+                    local = os.path.join(tmp_suites, suite_name)
+                    downloader.fetch_file(target, local)
 
-                # execute tests
-                tests_results = []
-                runner.start()
+                    # convert testing suites files
+                    suite = self._metadata.read_suite(local)
 
-                for test in suite.tests:
-                    if self._stop:
-                        runner.stop()
-                        break
+                    # execute tests
+                    tests_results = []
+                    runner.start()
 
-                    args = " ".join(test.arguments)
-                    cmd = f"{test.command} {args}"
+                    for test in suite.tests:
+                        if self._stop:
+                            runner.stop()
+                            break
 
-                    # TODO: set specific timeout for each test?
-                    test_data = runner.run_cmd(cmd, 3600)
-                    test_results = self._get_test_results(test, test_data)
-                    tests_results.append(test_results)
+                        args = " ".join(test.arguments)
+                        cmd = f"{test.command} {args}"
 
-                # create suite results
-                distro_str = self._read_sut_info(
-                    runner, ". /etc/os-release; echo \"$ID\"")
-                distro_ver_str = self._read_sut_info(
-                    runner, ". /etc/os-release; echo \"$VERSION_ID\"")
-                kernel_str = self._read_sut_info(
-                    runner, "uname -s -r -v")
-                arch_str = self._read_sut_info(
-                    runner, "uname -m")
+                        # TODO: set specific timeout for each test?
+                        test_data = runner.run_cmd(cmd, 3600)
+                        test_results = self._get_test_results(test, test_data)
+                        tests_results.append(test_results)
 
-                suite_results = SuiteResults(
-                    suite=suite,
-                    tests=tests_results,
-                    distro=distro_str,
-                    distro_ver=distro_ver_str,
-                    kernel=kernel_str,
-                    arch=arch_str)
+                    # create suite results
+                    distro_str = self._read_sut_info(
+                        runner, ". /etc/os-release; echo \"$ID\"")
+                    distro_ver_str = self._read_sut_info(
+                        runner, ". /etc/os-release; echo \"$VERSION_ID\"")
+                    kernel_str = self._read_sut_info(
+                        runner, "uname -s -r -v")
+                    arch_str = self._read_sut_info(
+                        runner, "uname -m")
 
-                results.append(suite_results)
+                    suite_results = SuiteResults(
+                        suite=suite,
+                        tests=tests_results,
+                        distro=distro_str,
+                        distro_ver=distro_ver_str,
+                        kernel=kernel_str,
+                        arch=arch_str)
+
+                    results.append(suite_results)
+                finally:
+                    backend.stop()
         finally:
             self._is_running = False
             self._stop = False
