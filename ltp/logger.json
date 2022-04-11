@@ -49,7 +49,17 @@
                 "info_handler"
             ]
         },
+        "ltp.downloader.transport": {
+            "handlers": [
+                "info_handler"
+            ]
+        },
         "ltp.installer": {
+            "handlers": [
+                "info_handler"
+            ]
+        },
+        "ltp.backend.qemu": {
             "handlers": [
                 "info_handler"
             ]
