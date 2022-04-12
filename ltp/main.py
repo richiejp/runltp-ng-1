@@ -133,6 +133,10 @@ def _setup_debug_log(tmpdir: str) -> None:
     debug_file = os.path.join(tmpdir, "debug.log")
     handler = logging.FileHandler(debug_file, encoding="utf8")
     handler.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
     logger.addHandler(handler)
 
 

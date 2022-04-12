@@ -4,9 +4,6 @@
     "formatters": {
         "simple": {
             "format": "%(message)s"
-        },
-        "debug": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         }
     },
     "handlers": {
