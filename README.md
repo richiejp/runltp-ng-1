@@ -20,7 +20,7 @@ Some basic commands are the following:
     # show packages to build LTP on the current system
     ./runltp-ng show-deps --build
 
-    # show testing suites on host different LTP installation folder
+    # show testing suites on host using different LTP installation folder
     LTPROOT=/opt/alternative_ltp ./runltp-ng host --list
 
     # run syscalls and dio testing suites on qemu VM
