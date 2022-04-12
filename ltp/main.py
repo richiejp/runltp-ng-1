@@ -66,7 +66,8 @@ def _ltp_host(args: Namespace) -> None:
     logger = logging.getLogger("ltp.main")
 
     if args.json_report and os.path.exists(args.json_report):
-        logger.error("JSON report file already exists")
+        logger.error("JSON report file already exists: %s", args.json_report)
+        return
 
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
     tmpdir = os.environ.get("TMPDIR", tempfile.mktemp(prefix="runltp-"))
@@ -112,7 +113,8 @@ def _ltp_qemu(args: Namespace) -> None:
     logger = logging.getLogger("ltp.main")
 
     if args.json_report and os.path.exists(args.json_report):
-        logger.error("JSON report file already exists")
+        logger.error("JSON report file already exists: %s", args.json_report)
+        return
 
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
     tmpdir = os.environ.get("TMPDIR", tempfile.mktemp(prefix="runltp-"))
