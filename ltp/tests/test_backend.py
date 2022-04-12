@@ -193,15 +193,7 @@ class TestQemuBackend:
         try:
             _, runner = backend.communicate()
 
-            ret = runner.run_cmd("mkdir -p /mnt/dir9p", 1)
-            assert ret["returncode"] == 0
-
-            ret = runner.run_cmd(
-                "mount -t 9p -o "
-                "trans=virtio,version=9p2000.L host0 /mnt/dir9p", 10)
-            assert ret["returncode"] == 0
-
-            ret = runner.run_cmd(f"test -f /mnt/dir9p/myfile", 1)
+            ret = runner.run_cmd(f"test -f /mnt/myfile", 1)
             assert ret["returncode"] == 0
         finally:
             backend.stop()

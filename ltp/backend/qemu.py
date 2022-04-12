@@ -229,6 +229,10 @@ class QemuBackend(Backend):
         self._runner.run_cmd(f"export LTP_COLORIZE_OUTPUT={colors}", 1)
         self._runner.run_cmd("cd $LTPROOT", 1)
 
+        # mount virtual FS
+        if self._virtfs:
+            self._runner.run_cmd("mount -t 9p -o trans=virtio host0 /mnt", 10)
+
         self._logger.info("Virtual machine started")
 
         return self._downloader, self._runner
