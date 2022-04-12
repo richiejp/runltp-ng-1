@@ -34,6 +34,9 @@ class TestTempRotator:
             path = rotator.rotate()
             paths.append(path)
 
+            # force cache IO operations
+            os.sync()
+
         sorted_paths = sorted(
             pathlib.Path(rotator._tmpbase).iterdir(),
             key=os.path.getmtime)
@@ -52,4 +55,4 @@ class TestTempRotator:
             if path.name != "latest"
         ]
 
-        assert paths_dir == paths[plus_rotate:]
+        assert list(set(paths[plus_rotate:]) - set(paths_dir)) == []

@@ -9,7 +9,7 @@ import subprocess
 import logging
 import pytest
 import signal
-import unittest
+import unittest.mock
 from ltp.runner import ShellRunner
 from ltp.runner import SSHRunner
 from ltp.runner import RunnerError
