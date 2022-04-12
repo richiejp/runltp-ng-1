@@ -8,3 +8,4 @@ output.json
 .coverage
 htmlcov
 .venv*
+*.qcow2
