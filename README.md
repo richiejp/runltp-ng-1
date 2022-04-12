@@ -9,18 +9,6 @@ Quickstart
 
 You can get help with `./runltp-ng --help`.
 
-The following environment variables are supported and they can be used to
-customize the runner behavior:
-
-- `LTPROOT`: root of LTP installation
-- `TMPDIR`: temporary directory for the tests
-- `LTP_COLORIZE_OUTPUT`: tells LTP to show colors
-
-> **_NOTE:_**  All features are experimental and they are under development.
-
-Commands
---------
-
 Some basic commands are the following:
 
     # show testing suites on host
@@ -39,6 +27,13 @@ Some basic commands are the following:
     ./runltp-ng qemu -i folder/image.qcow2 -s syscalls dio
 
 Please use `--help` to check all available options for the commands above.
+
+The following environment variables are supported and they can be used to
+customize the runner behavior:
+
+- `LTPROOT`: root of LTP installation
+- `TMPDIR`: temporary directory for the tests
+- `LTP_COLORIZE_OUTPUT`: tells LTP to show colors
 
 Running tests
 -------------
