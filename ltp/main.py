@@ -124,7 +124,9 @@ def _ltp_qemu(args: Namespace) -> None:
             system=args.system,
             ram=args.ram,
             smp=args.smp,
-            serial=args.serial_type)
+            serial=args.serial_type,
+            ro_image=args.ro_image,
+            virtfs=args.virtfs)
 
         dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
         results = dispatcher.exec_suites(args.run_suite)
@@ -224,6 +226,17 @@ def run() -> None:
         type=str,
         default="2",
         help="Qemu number of CPUs. Default: 2")
+    qemu_parser.add_argument(
+        "--virtfs",
+        "-v",
+        type=str,
+        default="/mnt",
+        help="Path to a host folder to mount in the guest")
+    qemu_parser.add_argument(
+        "--ro-image",
+        "-m",
+        type=str,
+        help="Path to an image which will be exposed as read only")
     qemu_parser.add_argument(
         "--serial-type",
         "-t",
