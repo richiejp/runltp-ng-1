@@ -73,6 +73,8 @@ def _ltp_host(args: Namespace) -> None:
     if not os.path.isdir(tmpdir):
         os.mkdir(tmpdir)
 
+    dispatcher = None
+
     try:
         if args.list:
             runtestdir = os.path.join(ltpdir, "runtest")
@@ -98,6 +100,9 @@ def _ltp_host(args: Namespace) -> None:
                 exporter.save_file(results, args.json_report)
     except LTPException as err:
         logger.error("Error: %s", str(err))
+    except KeyboardInterrupt:
+        if dispatcher:
+            dispatcher.stop()
 
 
 def _ltp_qemu(args: Namespace) -> None:
@@ -113,6 +118,8 @@ def _ltp_qemu(args: Namespace) -> None:
     tmpdir = os.environ.get("TMPDIR", tempfile.mktemp(prefix="runltp-"))
     if not os.path.isdir(tmpdir):
         os.mkdir(tmpdir)
+
+    dispatcher = None
 
     try:
         factory = QemuBackendFactory(
@@ -139,6 +146,9 @@ def _ltp_qemu(args: Namespace) -> None:
             exporter.save_file(results, args.json_report)
     except LTPException as err:
         logger.error("Error: %s", str(err))
+    except KeyboardInterrupt:
+        if dispatcher:
+            dispatcher.stop()
 
 
 def _ltp_install(args: Namespace) -> None:
