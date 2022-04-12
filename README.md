@@ -23,24 +23,33 @@ Commands
 
 Some basic commands are the following:
 
-    # show testing suites on local host
+    # show testing suites on host
     ./runltp-ng host --list
 
-    # run syscalls and dio testing suites
-    ./runltp-ng host -s syscalls -s dio
+    # run syscalls and dio testing suites on host
+    ./runltp-ng host -s syscalls dio
 
     # show packages to build LTP on the current system
     ./runltp-ng show-deps --build
 
-    # show testing suites on local host
+    # show testing suites on host different LTP installation folder
     LTPROOT=/opt/alternative_ltp ./runltp-ng host --list
+
+    # run syscalls and dio testing suites on qemu VM
+    ./runltp-ng qemu -i folder/image.qcow2 -s syscalls dio
 
 Please use `--help` to check all available options for the commands above.
 
 Running tests
 -------------
 
-LTP tests can be run using `./runltp-ng run` command.
+LTP tests can be run using different subcommands.
+
+- host: execute LTP tests in the current system
+- qemu: execute LTP tests in a qemu VM
+
+> **_NOTE:_**  In order to execute tests inside a qemu instance, be sure to
+> have qemu with kvm support installed.
 
 Install LTP
 -----------
