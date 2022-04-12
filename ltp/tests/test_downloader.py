@@ -2,6 +2,7 @@
 Test downloader implementations.
 """
 import os
+import time
 import pytest
 import logging
 import threading
@@ -61,11 +62,17 @@ class TestLocalDownloader:
 
         obj = LocalDownloader()
 
-        thread = threading.Thread(
-            target=lambda: obj.fetch_file(target_path, local_path))
+        def _threaded():
+            time.sleep(1)
+            obj.stop()
 
+        thread = threading.Thread(target=_threaded)
         thread.start()
-        obj.stop()
+
+        obj.fetch_file(target_path, local_path)
         thread.join()
 
-        assert "Copy stopped" in caplog.messages
+        target_size = os.stat(target_path).st_size
+        local_size = os.stat(local_path).st_size
+
+        assert target_size != local_size
