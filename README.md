@@ -32,8 +32,13 @@ The following environment variables are supported and they can be used to
 customize the runner behavior:
 
 - `LTPROOT`: root of LTP installation
-- `TMPDIR`: temporary directory for the tests
+- `TMPDIR`: temporary directory of the application. By default it's `/tmp`
 - `LTP_COLORIZE_OUTPUT`: tells LTP to show colors
+
+Every session has a temporary directory which can be found in
+`/<TMPDIR>/runltp-of<username>`. Inside this folder there's a symlink
+called `latest`, pointing to the latest session's temporary directory, and the
+application will rotate over 5 sessions.
 
 Running tests
 -------------
