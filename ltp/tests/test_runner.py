@@ -17,6 +17,9 @@ from ltp.runner import SerialRunner
 from ltp.runner import RunnerError
 
 
+TEST_SSH_PASSWORD = os.environ.get("TEST_SSH_PASSWORD", None)
+
+
 class OpenSSHServer:
     """
     Class helper used to initialize a OpenSSH server.
@@ -323,6 +326,7 @@ class TestSSHRunner:
         assert ret["exec_time"] > 0
 
     @pytest.mark.usefixtures("ssh_server")
+    @pytest.mark.skipif(TEST_SSH_PASSWORD is None, reason="Empty SSH password")
     def test_connection_user_password(self, config):
         """
         Test connection using username/password.
@@ -331,7 +335,7 @@ class TestSSHRunner:
             host=config.hostname,
             port=config.port,
             user=config.user,
-            password=os.environ.get("TEST_SSH_PASSWORD", None))
+            password=TEST_SSH_PASSWORD)
 
         client.start()
         ret = client.run_cmd("echo 'this is not a test'", 1)
