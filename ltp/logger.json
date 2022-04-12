@@ -14,13 +14,6 @@
             "class": "logging.StreamHandler",
             "level": "INFO",
             "formatter": "simple"
-        },
-        "debug_file_handler": {
-            "class": "logging.FileHandler",
-            "level": "DEBUG",
-            "formatter": "debug",
-            "filename": "debug.log",
-            "encoding": "utf8"
         }
     },
     "loggers": {
@@ -64,11 +57,5 @@
                 "info_handler"
             ]
         }
-    },
-    "root": {
-        "level": "DEBUG",
-        "handlers": [
-            "debug_file_handler"
-        ]
     }
 }

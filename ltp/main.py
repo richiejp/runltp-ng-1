@@ -123,6 +123,19 @@ def _init_logging() -> None:
         logging.config.dictConfig(data)
 
 
+def _setup_debug_log(tmpdir: str) -> None:
+    """
+    Save a log file with debugging information
+    """
+    logger = logging.getLogger("root")
+    logger.setLevel(logging.DEBUG)
+
+    debug_file = os.path.join(tmpdir, "debug.log")
+    handler = logging.FileHandler(debug_file, encoding="utf8")
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+
+
 def _ltp_host(args: Namespace) -> None:
     """
     Handle "host" subcommand.
@@ -151,6 +164,7 @@ def _ltp_host(args: Namespace) -> None:
             logger.info("")
         else:
             tmpdir = TempRotator(tmpbase).rotate()
+            _setup_debug_log(tmpdir)
 
             factory = LocalBackendFactory(ltpdir, tmpdir)
             dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
@@ -183,6 +197,7 @@ def _ltp_qemu(args: Namespace) -> None:
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
     tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
     tmpdir = TempRotator(tmpbase).rotate()
+    _setup_debug_log(tmpdir)
 
     dispatcher = None
 
