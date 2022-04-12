@@ -45,8 +45,8 @@ Running tests
 
 LTP tests can be run using different subcommands.
 
-- host: execute LTP tests in the current system
-- qemu: execute LTP tests in a qemu VM
+- `host`: execute LTP tests in the current system
+- `qemu`: execute LTP tests in a qemu VM
 
 > **_NOTE:_**  In order to execute tests inside a qemu instance, be sure to
 > have qemu with kvm support installed.
