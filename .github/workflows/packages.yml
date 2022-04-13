@@ -3,9 +3,6 @@
 name: "Test packages"
 on: [push, pull_request]
 
-env:
-  TEST_SSH_PASSWORD: root
-
 jobs:
   build:
     runs-on: ubuntu-latest
