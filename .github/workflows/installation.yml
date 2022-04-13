@@ -1,6 +1,6 @@
 # Copyright (c) 2022 Andrea Cervesato <andrea.cervesato@suse.com>
 
-name: "LTP installation on multiple distro"
+name: "Test LTP installation"
 on: [push, pull_request]
 
 jobs:

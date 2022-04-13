@@ -1,6 +1,6 @@
 # Copyright (c) 2022 Andrea Cervesato <andrea.cervesato@suse.com>
 
-name: "CI: test multiple python versions"
+name: "Test python versions"
 on: [push, pull_request]
 
 jobs:
