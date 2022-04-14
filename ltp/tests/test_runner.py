@@ -102,7 +102,10 @@ class OpenSSHServer:
 
         self._logger.info("starting SSHD with command: %s", cmd)
 
-        def run_server():
+        lock = threading.Lock()
+        lock.acquire()
+
+        def run_server(lock):
             self._proc = subprocess.Popen(
                 " ".join(cmd),
                 stdout=subprocess.PIPE,
@@ -111,20 +114,31 @@ class OpenSSHServer:
                 universal_newlines=True,
             )
 
+            line = ""
+
             while self._proc.poll() is None:
                 if self._stop_thread:
                     break
 
-                line = self._proc.stdout.readline()
-                if not line:
-                    break
+                data = self._proc.stdout.read(1)
+                if not data:
+                    continue
 
-                self._logger.info(line.rstrip())
+                line += data
+                if data == '\n':
+                    if line.startswith("Server listening"):
+                        lock.release()
 
-        self._thread = threading.Thread(target=run_server)
+                    self._logger.info(line.rstrip())
+                    line = ""
+
+        self._thread = threading.Thread(target=run_server, args=(lock,))
         self._thread.start()
 
-        time.sleep(2)
+        start_t = time.time()
+        while lock.locked():
+            assert time.time() - start_t < 60
+            time.sleep(0.3)
 
         self._logger.info("service is up to use")
 
@@ -137,7 +151,7 @@ class OpenSSHServer:
 
         self._logger.info("stopping SSHD service")
 
-        self._proc.kill()
+        self._proc.terminate()
         self._stop_thread = True
         self._thread.join(timeout=10)
 
