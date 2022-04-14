@@ -6,9 +6,12 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
-from ltp.downloader import LocalDownloader
+from ltp.runner import Runner
 from ltp.runner import ShellRunner
+from ltp.downloader import Downloader
+from ltp.downloader import LocalDownloader
 from .base import Backend
+from .base import BackendError
 from .base import BackendFactory
 
 
@@ -43,17 +46,33 @@ class LocalBackend(Backend):
         testcases = os.path.join(ltp_dir, "testcases", "bin")
         env["PATH"] = f'{os.environ.get("PATH")}:{testcases}'
 
-        self._downloader = LocalDownloader()
-        self._runner = ShellRunner(ltp_dir, env)
+        self._ltp_dir = ltp_dir
+        self._env = env
+        self._downloader = None
+        self._runner = None
 
-    def communicate(self) -> set:
-        return self._downloader, self._runner
+    @property
+    def downloader(self) -> Downloader:
+        return self._downloader
+
+    @property
+    def runner(self) -> Runner:
+        return self._runner
+
+    def communicate(self) -> None:
+        if self._downloader or self._runner:
+            raise BackendError("Backend is already running")
+
+        self._downloader = LocalDownloader()
+        self._runner = ShellRunner(self._ltp_dir, self._env)
 
     def stop(self) -> None:
-        pass
+        self._runner.stop()
+        self._downloader.stop()
 
     def force_stop(self) -> None:
-        pass
+        self._runner.force_stop()
+        self._downloader.stop()
 
 
 class LocalBackendFactory(BackendFactory):

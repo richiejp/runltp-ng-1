@@ -6,6 +6,8 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 from ltp import LTPException
+from ltp.runner import Runner
+from ltp.downloader import Downloader
 
 
 class BackendError(LTPException):
@@ -20,12 +22,26 @@ class Backend:
     host, a local host, a virtual machine instance, etc.
     """
 
-    def communicate(self) -> set:
+    @property
+    def runner(self) -> Runner:
         """
-        Start communicating with the backend and it returns Downloader and
-        Runner implementations to communicate. If backend is already running,
-        the current Downloader and Runner implementations will be given.
-        :returns: Downloader, Runner
+        Object used to execute commands on target. It's None if communicate()
+        has not been called yet.
+        """
+        raise NotImplementedError()
+
+    @property
+    def downloader(self) -> Downloader:
+        """
+        Object used to download files from target. It's None if communicate()
+        has not been called yet.
+        """
+        raise NotImplementedError()
+
+    def communicate(self) -> None:
+        """
+        Start communicating with the backend and it initialize internal
+        communication objects such as runner and downloader.
         """
         raise NotImplementedError()
 

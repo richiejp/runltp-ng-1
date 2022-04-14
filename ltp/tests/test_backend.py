@@ -43,21 +43,21 @@ class TestLocalBackend:
         tmp.mkdir()
 
         backend = LocalBackend(str(tmpdir), str(tmp))
-        downloader, runner = backend.communicate()
+        backend.communicate()
 
-        assert downloader is not None
-        assert runner is not None
+        assert backend.downloader is not None
+        assert backend.runner is not None
 
         target_file = tmpdir / "runtest" / "dirsuite0"
         local_file = tmpdir / "tmp" / "dirsuite0"
 
-        downloader.fetch_file(target_file, local_file)
+        backend.downloader.fetch_file(target_file, local_file)
         metadata = RuntestMetadata()
         suite = metadata.read_suite(local_file)
 
         for test in suite.tests:
             cmd = f"{test.command} {' '.join(test.arguments)}"
-            result = runner.run_cmd(cmd, 10)
+            result = backend.runner.run_cmd(cmd, 10)
 
             assert result is not None
             assert result["returncode"] == 0
@@ -110,12 +110,12 @@ class TestQemuBackend:
             serial=serial)
 
         try:
-            _, runner = backend.communicate()
+            backend.communicate()
 
-            assert runner is not None
+            assert backend.runner is not None
 
             for _ in range(0, 100):
-                ret = runner.run_cmd("echo 'hello world'", 1)
+                ret = backend.runner.run_cmd("echo 'hello world'", 1)
                 assert 'hello world\n' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
@@ -137,10 +137,10 @@ class TestQemuBackend:
             serial=serial)
 
         try:
-            downloader, runner = backend.communicate()
+            backend.communicate()
 
-            assert runner is not None
-            assert downloader is not None
+            assert backend.runner is not None
+            assert backend.downloader is not None
 
             for i in range(0, 100):
                 target_path = f"/root/myfile{i}"
@@ -148,11 +148,12 @@ class TestQemuBackend:
                 message = f"hello world{i}"
 
                 # create file on target_path
-                ret = runner.run_cmd(f"echo '{message}' > {target_path}", 1)
+                ret = backend.runner.run_cmd(
+                    f"echo '{message}' > {target_path}", 1)
                 assert ret["returncode"] == 0
 
                 # download file in local_path
-                downloader.fetch_file(target_path, local_path)
+                backend.downloader.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}\n"
         finally:
@@ -191,9 +192,9 @@ class TestQemuBackend:
             virtfs=str(tmpdir))
 
         try:
-            _, runner = backend.communicate()
+            backend.communicate()
 
-            ret = runner.run_cmd(f"test -f /mnt/myfile", 1)
+            ret = backend.runner.run_cmd(f"test -f /mnt/myfile", 1)
             assert ret["returncode"] == 0
         finally:
             backend.stop()

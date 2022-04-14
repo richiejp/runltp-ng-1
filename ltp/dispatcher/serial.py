@@ -105,10 +105,11 @@ class SerialDispatcher(Dispatcher):
                 backend = self._backend_factory.create()
 
                 try:
-                    downloader, runner = backend.communicate()
+                    backend.communicate()
 
                     if not avail_suites:
-                        avail_suites = self._read_available_suites(runner)
+                        avail_suites = self._read_available_suites(
+                            backend.runner)
 
                     if suite_name not in avail_suites:
                         raise DispatcherError(
@@ -121,37 +122,41 @@ class SerialDispatcher(Dispatcher):
                     # TODO: handle different metadata
                     target = os.path.join(self._ltpdir, "runtest", suite_name)
                     local = os.path.join(tmp_suites, suite_name)
-                    downloader.fetch_file(target, local)
+                    backend.downloader.fetch_file(target, local)
 
                     # convert testing suites files
                     suite = self._metadata.read_suite(local)
 
                     # execute tests
                     tests_results = []
-                    runner.start()
+                    backend.runner.start()
 
                     for test in suite.tests:
                         if self._stop:
-                            runner.stop()
+                            backend.runner.stop()
                             break
 
                         args = " ".join(test.arguments)
                         cmd = f"{test.command} {args}"
 
                         # TODO: set specific timeout for each test?
-                        test_data = runner.run_cmd(cmd, 3600)
+                        test_data = backend.runner.run_cmd(cmd, 3600)
                         test_results = self._get_test_results(test, test_data)
                         tests_results.append(test_results)
 
                     # create suite results
                     distro_str = self._read_sut_info(
-                        runner, ". /etc/os-release; echo \"$ID\"")
+                        backend.runner,
+                        ". /etc/os-release; echo \"$ID\"")
                     distro_ver_str = self._read_sut_info(
-                        runner, ". /etc/os-release; echo \"$VERSION_ID\"")
+                        backend.runner,
+                        ". /etc/os-release; echo \"$VERSION_ID\"")
                     kernel_str = self._read_sut_info(
-                        runner, "uname -s -r -v")
+                        backend.runner,
+                        "uname -s -r -v")
                     arch_str = self._read_sut_info(
-                        runner, "uname -m")
+                        backend.runner,
+                        "uname -m")
 
                     suite_results = SuiteResults(
                         suite=suite,

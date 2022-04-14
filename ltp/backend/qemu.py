@@ -11,8 +11,10 @@ import shutil
 import logging
 import subprocess
 from typing import Any
-from ltp.downloader import TransportDownloader
+from ltp.runner import Runner
 from ltp.runner import SerialRunner
+from ltp.downloader import Downloader
+from ltp.downloader import TransportDownloader
 from .base import Backend
 from .base import BackendError
 from .base import BackendFactory
@@ -101,6 +103,14 @@ class QemuBackend(Backend):
             raise BackendError(
                 f"Qemu session ended with exit code {exitcode}")
 
+    @property
+    def runner(self) -> Runner:
+        return self._runner
+
+    @property
+    def downloader(self) -> Downloader:
+        return self._downloader
+
     def stop(self) -> None:
         if not self._proc:
             return
@@ -130,7 +140,7 @@ class QemuBackend(Backend):
         self._logger.info("Virtual machine killed")
 
     # pylint: disable=too-many-statements
-    def communicate(self) -> set:
+    def communicate(self) -> None:
         if self._proc:
             raise BackendError("Virtual machine is already running")
 
@@ -234,8 +244,6 @@ class QemuBackend(Backend):
             self._runner.run_cmd("mount -t 9p -o trans=virtio host0 /mnt", 10)
 
         self._logger.info("Virtual machine started")
-
-        return self._downloader, self._runner
 
 
 class QemuBackendFactory(BackendFactory):

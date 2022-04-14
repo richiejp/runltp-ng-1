@@ -40,7 +40,7 @@ class ShellRunner(Runner):
 
     def stop(self, _: int = 0) -> None:
         if not self._process:
-            raise RunnerError("No process running")
+            return
 
         self._logger.info("Terminating process")
         self._process.terminate()
@@ -48,7 +48,7 @@ class ShellRunner(Runner):
 
     def force_stop(self) -> None:
         if not self._process:
-            raise RunnerError("No process running")
+            return
 
         self._logger.info("Killing process")
         self._process.kill()
