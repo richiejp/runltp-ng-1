@@ -7,7 +7,7 @@
 """
 import os
 import pwd
-import json
+import sys
 import pathlib
 import argparse
 import shutil
@@ -115,19 +115,22 @@ def _init_logging() -> None:
     """
     Initialize logging objects.
     """
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    logging_file = os.path.join(current_dir, "logger.json")
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
 
-    with open(logging_file, 'r', encoding='UTF-8') as jsonfile:
-        data = json.load(jsonfile)
-        logging.config.dictConfig(data)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+
+    formatter = logging.Formatter("%(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 
 def _setup_debug_log(tmpdir: str) -> None:
     """
     Save a log file with debugging information
     """
-    logger = logging.getLogger("root")
+    logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
     debug_file = os.path.join(tmpdir, "debug.log")
@@ -138,7 +141,6 @@ def _setup_debug_log(tmpdir: str) -> None:
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-
 
 def _ltp_host(args: Namespace) -> None:
     """
