@@ -4,33 +4,39 @@ Test downloader implementations.
 import os
 import time
 import pytest
-import logging
 import threading
 from ltp.downloader import LocalDownloader
+from ltp.downloader import SCPDownloader
 
 
-class TestLocalDownloader:
+class _TestDownloader:
     """
-    Test LocalDownloader implementation.
+    Generic Downloader test for various implementations.
     """
 
-    def test_fetch_file_bad_args(self, tmpdir):
+    @pytest.fixture
+    def downloader(self):
+        """
+        Implement this fixture to test downloaders fetch_file method.
+        """
+        pass
+
+    def test_fetch_file_bad_args(self, tmpdir, downloader):
         """
         Test fetch_file method with bad arguments.
         """
-        obj = LocalDownloader()
         with pytest.raises(ValueError):
-            obj.fetch_file(None, "local_file")
+            downloader.fetch_file(None, "local_file")
 
         target_path = tmpdir / "target_file"
         target_path.write("runltp-ng tests")
         with pytest.raises(ValueError):
-            obj.fetch_file(target_path, None)
+            downloader.fetch_file(str(target_path), None)
 
         with pytest.raises(ValueError):
-            obj.fetch_file("this_file_doesnt_exist", None)
+            downloader.fetch_file("this_file_doesnt_exist", None)
 
-    def test_fetch_file(self, tmpdir):
+    def test_fetch_file(self, tmpdir, downloader):
         """
         Test fetch_file method.
         """
@@ -38,41 +44,88 @@ class TestLocalDownloader:
         target_path = tmpdir / "target_file"
         target_path.write("runltp-ng tests")
 
-        obj = LocalDownloader()
-        obj.fetch_file(target_path, local_path)
-        obj.stop()
+        target = str(target_path)
+        local = str(local_path)
 
-        assert os.path.isfile(local_path)
-        assert open(target_path, 'r').read() == "runltp-ng tests"
+        downloader.fetch_file(target, local)
+        downloader.stop()
 
-    def test_stop_fetch_file(self, tmpdir, caplog):
+        assert os.path.isfile(local)
+        assert open(target, 'r').read() == "runltp-ng tests"
+
+    def test_stop_fetch_file(self, tmpdir, downloader):
         """
         Test stop method when running fetch_file.
         """
-        caplog.set_level(logging.INFO)
-
         local_path = tmpdir / "local_file"
         target_path = tmpdir / "target_file"
 
+        target = str(target_path)
+        local = str(local_path)
+
         # create a big file to have enough IO traffic and slow
         # down fetch_file() method
-        with open(target_path, 'wb') as ftarget:
+        with open(target, 'wb') as ftarget:
             ftarget.seek(1*1024*1024*1024-1)
             ftarget.write(b'\0')
 
-        obj = LocalDownloader()
-
         def _threaded():
             time.sleep(1)
-            obj.stop()
+            downloader.stop()
 
         thread = threading.Thread(target=_threaded)
         thread.start()
 
-        obj.fetch_file(target_path, local_path)
+        downloader.fetch_file(target, local)
         thread.join()
 
-        target_size = os.stat(target_path).st_size
-        local_size = os.stat(local_path).st_size
+        target_size = os.stat(target).st_size
+        local_size = os.stat(local).st_size
 
         assert target_size != local_size
+
+
+class TestLocalDownloader(_TestDownloader):
+    """
+    Test LocalDownloader implementation.
+    """
+
+    @pytest.fixture
+    def downloader(self):
+        yield LocalDownloader()
+
+
+@pytest.mark.usefixtures("ssh_server")
+class TestSCPDownloader(_TestDownloader):
+    """
+    Test SCPDownloader implementation.
+    """
+
+    @pytest.fixture(scope="module")
+    def config(self):
+        """
+        Fixture exposing configuration
+        """
+        class Config:
+            """
+            Configuration class
+            """
+            import pwd
+            hostname = "127.0.0.1"
+            port = 2222
+            testsdir = os.path.abspath(os.path.dirname(__file__))
+            currdir = os.path.abspath('.')
+            user = pwd.getpwuid(os.geteuid()).pw_name
+            user_key = os.path.sep.join([testsdir, 'id_rsa'])
+            user_key_pub = os.path.sep.join([testsdir, 'id_rsa.pub'])
+
+        return Config()
+
+    @pytest.fixture
+    def downloader(self, config):
+        yield SCPDownloader(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key
+        )
