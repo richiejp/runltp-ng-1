@@ -1,9 +1,8 @@
-#include <bits/types/struct_iovec.h>
-#include <endian.h>
 #define _GNU_SOURCE
 
 #include <execinfo.h>
 #include <errno.h>
+#include <endian.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -20,6 +19,7 @@
 #include <sys/epoll.h>
 
 #define VERSION "0.0.1-dev"
+#define LTX_IOV_MAX 3
 
 #define LTX_POS ((struct ltx_pos){ __FILE__, __func__, __LINE__ })
 #define LTX_LOG(fmt, ...) ltx_log(LTX_POS, fmt, ##__VA_ARGS__)
@@ -57,6 +57,10 @@ struct ltx_buf {
 	char data[BUFSIZ];
 };
 
+static const int data_in = STDIN_FILENO;
+static const int data_out = STDOUT_FILENO;
+static int epfd;
+
 __attribute__((pure, nonnull, warn_unused_result))
 static char *ltx_buf_end(struct ltx_buf *const self)
 {
@@ -64,7 +68,7 @@ static char *ltx_buf_end(struct ltx_buf *const self)
 }
 
 __attribute__((pure, nonnull, warn_unused_result))
-static size_t ltx_buf_avail(struct ltx_buf *const self)
+static size_t ltx_buf_avail(const struct ltx_buf *const self)
 {
 	return BUFSIZ - self->used;
 }
@@ -73,10 +77,8 @@ __attribute__((nonnull))
 static void ltx_fmt(const struct ltx_pos pos,
 		    struct ltx_buf *const buf,
 		    const char *const fmt,
-		    va_list va)
+		    va_list ap)
 {
-	va_list ap;
-
 	buf->used += snprintf(ltx_buf_end(buf), ltx_buf_avail(buf) - 2,
 			      "[%s:%s:%i] ", pos.file, pos.func, pos.line);
 	buf->used += vsnprintf(ltx_buf_end(buf), ltx_buf_avail(buf) - 2, fmt, ap);
@@ -85,27 +87,36 @@ static void ltx_fmt(const struct ltx_pos pos,
 	buf->used++;
 }
 
-static size_t ltx_log_msg(struct iovec *const iov, const size_t iov_len,
-			  const struct ltx_buf *const buf)
+__attribute__((nonnull, warn_unused_result))
+static size_t ltx_log_msg(struct iovec *const iov, const struct ltx_buf *const buf)
 {
 	char *const head = iov[0].iov_base;
 	size_t len = 0;
 
+	/* fixarray[3] = { ... */
 	head[len++] = 0x93;
+	/* msg type = 2 */
 	head[len++] = 0x02;
-	head[len++] = 0x00;
+	/* table_id = nil */
+	head[len++] = 0xc0;
 
 	if (buf->used < 32) {
-		head[len++] = 0xa0 | buf->used;
+		/* fixstr[buf->used] = "...*/
+		head[len++] = 0xa0 + buf->used;
 	} else if (buf->used < 256) {
+		/* str8[buf->used] = "...*/
+		head[len++] = 0xd9;
 		head[len++] = buf->used;
 	} else {
+		/* str16[buf->used] = "...*/
+		head[len++] = 0xda;
 		head[len++] = buf->used >> 8;
 		head[len++] = buf->used;
 	}
 
 	iov[0].iov_len = len;
 
+	/* ...buf->data" } */
 	iov[1].iov_base = (void *)buf->data;
 	iov[1].iov_len = buf->used;
 
@@ -115,20 +126,39 @@ static size_t ltx_log_msg(struct iovec *const iov, const size_t iov_len,
 __attribute__((nonnull, format(printf, 2, 3)))
 static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 {
-	struct ltx_buf buf;
+	struct ltx_buf head = { .used = 0 };
+	struct ltx_buf msg = { .used = 0 };
 	va_list ap;
-	const char fixstr[32] = { 0xa0 };
-	const char str8[1 << 7] = { 0xd9 };
-	const char str16[BUFSIZ] = { 0xda };
-	struct iovec iov[3] = {
-		{ "\x93\x02\x03", 3 },
-	};
+	struct iovec iov[LTX_IOV_MAX];
+	size_t iov_len, iov_i;
+	ssize_t res;
 
 	va_start(ap, fmt);
-	ltx_fmt(pos, &buf, fmt, ap);
+	ltx_fmt(pos, &msg, fmt, ap);
 	va_end(ap);
 
-	write(STDERR_FILENO, buf.data, buf.used);
+	res = write(STDERR_FILENO, msg.data, msg.used);
+
+	iov[0].iov_base = head.data;
+	iov_len = ltx_log_msg(iov, &msg);
+	iov_i = 0;
+
+	while (1) {
+		res = writev(data_out, iov + iov_i, iov_len);
+		if (res < 0)
+			break;
+
+		while ((size_t)res >= iov[iov_i].iov_len) {
+			res -= iov[iov_i].iov_len;
+			iov_i++;
+		}
+
+		if (iov_i == iov_len)
+			break;
+
+		iov[iov_i].iov_len -= res;
+		iov[iov_i].iov_base += res;
+	}
 }
 
 __attribute__((nonnull, warn_unused_result))
@@ -170,10 +200,6 @@ static int ltx_exp_pos(const struct ltx_pos pos,
 	exit(1);
 }
 
-static const int data_in = STDIN_FILENO;
-static const int data_out = STDOUT_FILENO;
-static int epfd;
-
 static void ltx_epoll_add(const int fd, const uint32_t events)
 {
 	struct epoll_event ev = {
@@ -205,7 +231,7 @@ static void event_loop(void)
 			assert_expr(l == 2, "read l = %d", l);
 			assert_expr(!memcmp(buf, ping, 2), "");
 
-			l = LTX_EXP_POS(write(data_out, pong, 2));
+			l = LTX_EXP_POS(write(data_out, ping, 2));
 			assert_expr(l == 2, "write l = %d", l);
 
 			if (ev->events | EPOLLHUP)
