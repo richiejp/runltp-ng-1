@@ -42,6 +42,12 @@ being mutated or read from. For some messages the `table_id` could be
 `nil` (distinct from a fixint value of 0) in which case the message is
 not associated with a particular table entry.
 
+### Timing
+
+Many messages from the SUT contain nano second time stamps. These are
+taken with `CLOCK_MONOTONIC_RAW` or `CLOCK_MONOTONIC`. See `man 2
+clock_gettime`.
+
 ## Messages
 
 LTX is not intended to have a generic MessagePack parser. There are
@@ -54,9 +60,28 @@ type which is a positive fixint.
 LTX echos messages back to acknowledge them. The host should not echo
 messages back to LTX.
 
+So usually messages start like the following:
+
+| fixarray enclosing msg | msg type fixint | table fixint            |
+|:-----------------------|:----------------|:------------------------|
+| `0x90`-`0x9f`          | `0x01`-`0x05`   | `0xc0` or `0x00`-`0x7f` |
+
+Not all messages have a table field
+
 ### Ping
 
-[0]
+Sent to LTX which should respond with [Pong](#Pong).
+
+`[0]`
+
+### Pong
+
+Response to [Ping](#Ping). Contains a nano second time stamp of when
+Pong was sent.
+
+`time`: uint 64
+
+`[1, nanosecs]`
 
 ### Env
 
@@ -67,7 +92,7 @@ specified then it is set for all.
 `key`: fixstr | str 8
 `value`: fixstr | str 8
 
-[1, table_id, key, value]
+`[2, table_id, key, value]`
 
 ### Exec
 
@@ -79,16 +104,16 @@ omitted. The value for `argv[0]` is extracted from `pathname`.
 `pathname`: fixstr | str 8
 `argv[1..12]`: fixstr | str 8
 
-[2, table_id, pathname, argv1, ..., argv12]
+`[3, table_id, pathname, argv1, ..., argv12]`
 
 ### Log
 
 Sent from LTX to the host to log child process output.
 
-table_id: positive fixint
-text: fixstr | str 8
+`table_id`: positive fixint
+`text`: fixstr | str 8
 
-[3, table_id, text]
+`[4, table_id, text]`
 
 ### Error
 
@@ -97,10 +122,10 @@ error message is fatal. LTX may continue to send and receive messages
 after an error. However the SUT should be returned to a known good
 state before starting any new tests.
 
-table_id: positive fixint | nil
-text: fixstr | str 8
+`table_id`: positive fixint | nil
+`text`: fixstr | str 8
 
-[4, table_id, text]
+`[5, table_id, text]`
 
 ### Result
 

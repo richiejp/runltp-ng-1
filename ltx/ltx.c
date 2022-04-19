@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <poll.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -54,15 +55,42 @@ struct ltx_pos {
 
 struct ltx_buf {
 	size_t used;
-	char data[BUFSIZ];
+	uint8_t data[BUFSIZ];
+};
+
+enum ltx_msg_types {
+	ltx_msg_ping,
+	ltx_msg_pong,
+	ltx_msg_env,
+	ltx_msg_exec,
+	ltx_msg_log,
 };
 
 static const int data_in = STDIN_FILENO;
 static const int data_out = STDOUT_FILENO;
 static int epfd;
 
+static const uint8_t ltx_nil = 0xc0;
+
+__attribute__((const, warn_unused_result))
+static uint8_t ltx_fixarr(const uint8_t len)
+{
+	return 0x90 + len;
+}
+
+__attribute__((nonnull))
+static void ltx_uint64(uint8_t *const buf, const uint64_t i)
+{
+	int j;
+
+	buf[0] = 0xcf;
+
+	for (j = 1; j < 9; j++)
+		buf[j] = (uint8_t)(i >> (64 - 8*j));
+}
+
 __attribute__((pure, nonnull, warn_unused_result))
-static char *ltx_buf_end(struct ltx_buf *const self)
+static uint8_t *ltx_buf_end(struct ltx_buf *const self)
 {
 	return self->data + self->used;
 }
@@ -79,9 +107,9 @@ static void ltx_fmt(const struct ltx_pos pos,
 		    const char *const fmt,
 		    va_list ap)
 {
-	buf->used += snprintf(ltx_buf_end(buf), ltx_buf_avail(buf) - 2,
+	buf->used += snprintf((char *)ltx_buf_end(buf), ltx_buf_avail(buf) - 2,
 			      "[%s:%s:%i] ", pos.file, pos.func, pos.line);
-	buf->used += vsnprintf(ltx_buf_end(buf), ltx_buf_avail(buf) - 2, fmt, ap);
+	buf->used += vsnprintf((char *)ltx_buf_end(buf), ltx_buf_avail(buf) - 2, fmt, ap);
 
 	memcpy(ltx_buf_end(buf), "\n\0", 2);
 	buf->used++;
@@ -90,15 +118,12 @@ static void ltx_fmt(const struct ltx_pos pos,
 __attribute__((nonnull, warn_unused_result))
 static size_t ltx_log_msg(struct iovec *const iov, const struct ltx_buf *const buf)
 {
-	char *const head = iov[0].iov_base;
+	uint8_t *const head = iov[0].iov_base;
 	size_t len = 0;
 
-	/* fixarray[3] = { ... */
-	head[len++] = 0x93;
-	/* msg type = 2 */
-	head[len++] = 0x02;
-	/* table_id = nil */
-	head[len++] = 0xc0;
+	head[len++] = ltx_fixarr(3);
+	head[len++] = ltx_msg_log;
+	head[len++] = ltx_nil;
 
 	if (buf->used < 32) {
 		/* fixstr[buf->used] = "...*/
@@ -200,6 +225,34 @@ static int ltx_exp_pos(const struct ltx_pos pos,
 	exit(1);
 }
 
+__attribute__((warn_unused_result))
+static uint64_t ltx_gettime(void)
+{
+	struct timespec ts;
+
+#ifdef CLOCK_MONOTONIC_RAW
+	LTX_EXP_0(clock_gettime(CLOCK_MONOTONIC_RAW, &ts));
+#else
+	LTX_EXP_0(clock_gettime(CLOCK_MONOTONIC, &ts));
+#endif
+
+	return ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+static void ltx_pong(void)
+{
+	size_t len = 0;
+	uint8_t buf[1 + 1 + 9] = {
+		ltx_fixarr(2),
+		ltx_msg_pong,
+	};
+
+	ltx_uint64(buf + 2, ltx_gettime());
+
+	while (len < 11)
+		len += LTX_EXP_POS(write(data_out, buf + len, 11));
+}
+
 static void ltx_epoll_add(const int fd, const uint32_t events)
 {
 	struct epoll_event ev = {
@@ -212,8 +265,8 @@ static void ltx_epoll_add(const int fd, const uint32_t events)
 
 static void event_loop(void)
 {
-	const char ping[2] = { 0x91, 0x00 };
-	char buf[2];
+	const uint8_t ping[2] = { 0x91, 0x00 };
+	uint8_t buf[2];
 	const int maxevents = 64;
 	struct epoll_event events[maxevents];
 
@@ -233,6 +286,8 @@ static void event_loop(void)
 
 			l = LTX_EXP_POS(write(data_out, ping, 2));
 			assert_expr(l == 2, "write l = %d", l);
+
+			ltx_pong();
 
 			if (ev->events | EPOLLHUP)
 				return;
