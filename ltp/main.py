@@ -146,6 +146,10 @@ def _ltp_host(args: Namespace) -> None:
     """
     logger = logging.getLogger("ltp.main")
 
+    if not args.list and not args.run_suite:
+        logger.info("Please use --list or --run-suite options")
+        return
+
     if args.json_report and os.path.exists(args.json_report):
         logger.error("JSON report file already exists: %s", args.json_report)
         return
@@ -274,7 +278,6 @@ def run() -> None:
         "-s",
         type=str,
         nargs="*",
-        required=True,
         help="Run testing suites on host")
     host_parser.add_argument(
         "--json-report",
