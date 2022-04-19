@@ -16,7 +16,10 @@ class LtxSpawn(PopenSpawn):
     Copy and pasted from popen_spawn.py
     """
     def __init__(self):
-        super(PopenSpawn, self).__init__(timeout=1)
+        super(PopenSpawn, self).__init__(
+            timeout=1,
+            logfile=sys.stdout.buffer
+        )
 
         self.proc = sp.Popen(
             ["./ltx"],
@@ -61,7 +64,6 @@ class TestLtx:
 
     def test_version(self):
         p = spawn()
-        p.logfile = sys.stdout.buffer
 
         assert p.expect_exact(packb([2, None, "[ltx.c:main:245] Linux Test Executor 0.0.1-dev\n"])) == 0
 
