@@ -7,24 +7,28 @@ LTP Next-Gen runner is a new version of the `runltp` script used by the
 Quickstart
 ==========
 
-You can get help with `./runltp-ng --help`.
+To install `runltp-ng` please use `pip` as following:
+
+    pip install --prefix=<install directory> .
+
+Be sure to initialize `PATH` and `PYTHONPATH` if no virtualenv is used.
 
 Some basic commands are the following:
 
     # show testing suites on host
-    ./runltp-ng host --list
+    runltp-ng host --list
 
     # run syscalls and dio testing suites on host
-    ./runltp-ng host -s syscalls dio
+    runltp-ng host -s syscalls dio
 
     # show packages to build LTP on the current system
-    ./runltp-ng show-deps --build
+    runltp-ng show-deps --build
 
     # show testing suites on host using different LTP installation folder
-    LTPROOT=/opt/alternative_ltp ./runltp-ng host --list
+    LTPROOT=/opt/alternative_ltp runltp-ng host --list
 
     # run syscalls and dio testing suites on qemu VM
-    ./runltp-ng qemu -i folder/image.qcow2 -s syscalls dio
+    runltp-ng qemu -i folder/image.qcow2 -s syscalls dio
 
 Please use `--help` to check all available options for the commands above.
 
@@ -74,6 +78,7 @@ Unit testing
 
 To run unittests, `pytest` has to be installed:
 
+    pip install -e .
     pip install pytest
     pytest ./ltp/tests
 
