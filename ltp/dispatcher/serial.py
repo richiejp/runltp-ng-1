@@ -99,7 +99,6 @@ class SerialDispatcher(Dispatcher):
 
         env = {}
         env["LTPROOT"] = self._ltpdir
-        env["TMPDIR"] = self._tmpdir
         env["LTP_COLORIZE_OUTPUT"] = os.environ.get("LTP_COLORIZE_OUTPUT", "y")
 
         # PATH must be set in order to run bash scripts
