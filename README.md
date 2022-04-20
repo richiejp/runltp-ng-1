@@ -30,6 +30,9 @@ Some basic commands are the following:
     # run syscalls and dio testing suites on qemu VM
     runltp-ng qemu -i folder/image.qcow2 -s syscalls dio
 
+    # run syscalls and dio testing suites on target via SSH
+    runltp-ng ssh -a 10.0.10.1 -k privkey_rsa -s syscalls dio
+
 Please use `--help` to check all available options for the commands above.
 
 The following environment variables are supported and they can be used to
@@ -51,6 +54,7 @@ LTP tests can be run using different subcommands.
 
 - `host`: execute LTP tests in the current system
 - `qemu`: execute LTP tests in a qemu VM
+- `ssh`: execute LTP tests on target via SSH protocol
 
 > **_NOTE:_**  In order to execute tests inside a qemu instance, be sure to
 > have qemu with kvm support installed.
