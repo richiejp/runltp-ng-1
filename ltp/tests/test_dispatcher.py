@@ -16,7 +16,7 @@ class TestSerialDispatcher:
         """
         Test constructor with bad arguments.
         """
-        factory = LocalBackendFactory(str(tmpdir), str(tmpdir))
+        factory = LocalBackendFactory()
 
         with pytest.raises(ValueError):
             SerialDispatcher(str(tmpdir), None, factory)
@@ -32,7 +32,7 @@ class TestSerialDispatcher:
         """
         Test exec_suites() method with bad arguments.
         """
-        factory = LocalBackendFactory(str(tmpdir), str(tmpdir))
+        factory = LocalBackendFactory()
         dispatcher = SerialDispatcher(str(tmpdir), str(tmpdir), factory)
 
         with pytest.raises(ValueError):
@@ -46,7 +46,7 @@ class TestSerialDispatcher:
         """
         Test exec_suites() method.
         """
-        factory = LocalBackendFactory(str(tmpdir), str(tmpdir))
+        factory = LocalBackendFactory()
         dispatcher = SerialDispatcher(str(tmpdir), str(tmpdir), factory)
 
         results = dispatcher.exec_suites(suites=["dirsuite0", "dirsuite2"])

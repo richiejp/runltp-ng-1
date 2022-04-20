@@ -75,17 +75,6 @@ class TestSSHRunner:
                 user=config.user,
                 key_file="this_key_doesnt_exist.key")
 
-    def test_name(self, config):
-        """
-        Test if name property returns the right name
-        """
-        client = SSHRunner(
-            host="127.0.0.2",
-            port=config.port,
-            user=config.user,
-            key_file=config.user_key)
-        assert client.name == "ssh"
-
     @pytest.mark.usefixtures("ssh_server")
     def test_bad_hostname(self, config):
         """
@@ -172,7 +161,7 @@ class TestSSHRunner:
             client.start()
 
     @pytest.mark.usefixtures("ssh_server")
-    def test_connection_key_file(self, config):
+    def test_connection_key_file(self, tmpdir, config):
         """
         Test connection using key_file.
         """
@@ -183,17 +172,27 @@ class TestSSHRunner:
             key_file=config.user_key)
 
         client.start()
-        ret = client.run_cmd("echo 'this is not a test'", 1)
+
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
+
+        data = client.run_cmd(
+            "echo $PWD-$MYVAR",
+            timeout=1,
+            env=env,
+            cwd=cwd)
         client.stop()
 
-        assert ret["command"] == "echo 'this is not a test'"
-        assert ret["stdout"] == "this is not a test\n"
-        assert ret["returncode"] == 0
-        assert ret["timeout"] == 1
-        assert ret["exec_time"] > 0
+        assert data["command"] == "echo $PWD-$MYVAR"
+        assert data["timeout"] == 1
+        assert data["returncode"] == 0
+        assert data["stdout"] == f"{str(tmpdir)}-hello\n"
+        assert data["exec_time"] > 0
+        assert data["env"] == env
+        assert data["cwd"] == cwd
 
     @pytest.mark.usefixtures("ssh_server")
-    def test_stop(self, config):
+    def test_stop(self, tmpdir, config):
         """
         Test connection using key_file and stop during a long
         command execution.
@@ -213,17 +212,27 @@ class TestSSHRunner:
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        ret = client.run_cmd("sleep 10", 20)
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
 
-        assert ret["command"] == "sleep 10"
-        assert ret["stdout"] == ""
-        assert ret["returncode"] == -1
-        assert ret["timeout"] == 20
-        assert ret["exec_time"] > 0
+        data = client.run_cmd(
+            "echo $PWD-$MYVAR",
+            timeout=1,
+            env=env,
+            cwd=cwd)
+        client.stop()
+
+        assert data["command"] == "echo $PWD-$MYVAR"
+        assert data["timeout"] == 1
+        assert data["returncode"] == 0
+        assert data["stdout"] == f"{str(tmpdir)}-hello\n"
+        assert data["exec_time"] > 0
+        assert data["env"] == env
+        assert data["cwd"] == cwd
 
     @pytest.mark.usefixtures("ssh_server")
     @pytest.mark.skipif(TEST_SSH_PASSWORD is None, reason="Empty SSH password")
-    def test_connection_user_password(self, config):
+    def test_connection_user_password(self, tmpdir, config):
         """
         Test connection using username/password.
         """
@@ -233,15 +242,24 @@ class TestSSHRunner:
             user=config.user,
             password=TEST_SSH_PASSWORD)
 
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
+
         client.start()
-        ret = client.run_cmd("echo 'this is not a test'", 1)
+        data = client.run_cmd(
+            "echo $PWD-$MYVAR",
+            timeout=1,
+            env=env,
+            cwd=cwd)
         client.stop()
 
-        assert ret["command"] == "echo 'this is not a test'"
-        assert ret["stdout"] == "this is not a test\n"
-        assert ret["returncode"] == 0
-        assert ret["timeout"] == 1
-        assert ret["exec_time"] > 0
+        assert data["command"] == "echo $PWD-$MYVAR"
+        assert data["timeout"] == 1
+        assert data["returncode"] == 0
+        assert data["stdout"] == f"{str(tmpdir)}-hello\n"
+        assert data["exec_time"] > 0
+        assert data["env"] == env
+        assert data["cwd"] == cwd
 
 
 class TestSerialRunner:
@@ -263,22 +281,15 @@ class TestSerialRunner:
             with pytest.raises(ValueError):
                 SerialRunner(ftarget, None)
 
-    def test_name(self, tmpdir):
-        """
-        Test name property.
-        """
-        target = tmpdir / "target"
-        target.write("")
-
-        with open(target, "r+") as ftarget:
-            assert SerialRunner(ftarget, ftarget).name == "serial"
-
     def test_command(self, tmpdir):
         """
         Test start() method.
         """
         target = tmpdir / "target"
         target.write("")
+
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
 
         with open(target, "r+") as mytarget:
             data = None
@@ -296,7 +307,9 @@ class TestSerialRunner:
                         cmd,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
-                        shell=True)
+                        shell=True,
+                        env=env,
+                        cwd=cwd)
 
                     stdout = proc.communicate()[0]
                     ftarget.write(stdout.decode("utf-8"))
@@ -307,14 +320,20 @@ class TestSerialRunner:
             runner._stdin.write = unittest.mock.MagicMock()
             runner._stdin.write.side_effect = _emulate_shell
 
-            data = runner.run_cmd("echo 'this-is-not-a-test'", 1)
+            data = runner.run_cmd(
+                "echo $PWD-$MYVAR",
+                timeout=1,
+                env=env,
+                cwd=cwd)
             runner.stop()
 
-            assert data["command"] == "echo 'this-is-not-a-test'"
+            assert data["command"] == "echo $PWD-$MYVAR"
             assert data["timeout"] == 1
             assert data["returncode"] == 0
-            assert data["stdout"] == "this-is-not-a-test\n"
+            assert data["stdout"] == f"{str(tmpdir)}-hello\n"
             assert data["exec_time"] > 0
+            assert data["env"] == env
+            assert data["cwd"] == cwd
 
     def test_command_timeout(self, tmpdir):
         """
@@ -337,12 +356,6 @@ class TestShellRunner:
     Test ShellRunner class implementation.
     """
 
-    def test_name(self):
-        """
-        Test name property.
-        """
-        assert ShellRunner().name == "shell"
-
     def test_start(self):
         """
         Test start method.
@@ -353,23 +366,27 @@ class TestShellRunner:
         """
         Test run_cmd method.
         """
-        ret = ShellRunner().run_cmd("test", 1)
+        ret = ShellRunner().run_cmd("test", timeout=1)
         assert ret["command"] == "test"
         assert ret["returncode"] == 1
         assert ret["stdout"] == ""
         assert ret["timeout"] == 1
         assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] is None
 
     def test_run_cmd_timeout(self):
         """
         Test run_cmd method when timeout occurs.
         """
-        ret = ShellRunner().run_cmd("sleep 10", 0.1)
+        ret = ShellRunner().run_cmd("sleep 10", timeout=0.1)
         assert ret["command"] == "sleep 10"
         assert ret["returncode"] == -signal.SIGKILL
         assert ret["stdout"] == ""
         assert ret["timeout"] == 0.1
         assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] is None
 
     def test_run_cmd_cwd(self, tmpdir):
         """
@@ -378,24 +395,31 @@ class TestShellRunner:
         tmpfile = tmpdir / "myfile"
         tmpfile.write("")
 
-        ret = ShellRunner(cwd=str(tmpdir)).run_cmd("ls", 10)
+        ret = ShellRunner().run_cmd("ls", timeout=10, cwd=str(tmpdir))
         assert ret["command"] == "ls"
         assert ret["returncode"] == 0
         assert ret["stdout"] == "myfile\n"
         assert ret["timeout"] == 10
         assert ret["exec_time"] > 0
+        assert ret["cwd"] == str(tmpdir)
+        assert ret["env"] is None
 
     def test_run_cmd_env(self):
         """
         Test run_cmd method using environment variables.
         """
-        ret = ShellRunner(env=dict(HELLO="world")).run_cmd(
-            "echo -n $HELLO", 10)
+        env = dict(HELLO="world")
+        ret = ShellRunner().run_cmd(
+            "echo -n $HELLO",
+            timeout=10,
+            env=env)
         assert ret["command"] == "echo -n $HELLO"
         assert ret["returncode"] == 0
         assert ret["stdout"] == "world"
         assert ret["timeout"] == 10
         assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] == env
 
     def test_stop(self):
         """
@@ -410,7 +434,7 @@ class TestShellRunner:
                 self.daemon = True
 
             def run(self):
-                self.result = shell.run_cmd("sleep 10", 20)
+                self.result = shell.run_cmd("sleep 10", timeout=20)
 
         thread = MyThread()
         thread.start()
@@ -426,6 +450,8 @@ class TestShellRunner:
         assert ret["stdout"] == ""
         assert ret["timeout"] == 20
         assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] is None
 
     def test_force_stop(self):
         """
@@ -456,3 +482,5 @@ class TestShellRunner:
         assert ret["stdout"] == ""
         assert ret["timeout"] == 20
         assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] is None

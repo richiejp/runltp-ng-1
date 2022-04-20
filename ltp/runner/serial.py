@@ -47,15 +47,11 @@ class SerialRunner(Runner):
         if not self._stdout:
             raise ValueError("stdout is empty")
 
-    @property
-    def name(self) -> str:
-        return "serial"
-
     # pylint: disable=consider-using-with
     def start(self) -> None:
         pass
 
-    def stop(self, _: int = 0) -> None:
+    def stop(self) -> None:
         self._logger.info("Stopping command")
         self._stop = True
 
@@ -71,56 +67,89 @@ class SerialRunner(Runner):
                       for _ in range(length))
         return out
 
-    # pylint: disable=too-many-locals
-    def _run_cmd_impl(self, command: str, timeout: int) -> dict:
+    def _send(self,
+              cmd: str,
+              timeout: int,
+              stdout_callback: callable = None) -> set:
+        """
+        Send a command and return retcode, elabsed time and stdout.
+        """
+        t_secs = max(timeout, 0)
+
+        code = self._generate_string()
+        cmd_end = f"echo $?-{code}\n"
+        matcher = re.compile(f"(?P<retcode>\\d+)-{code}")
+
+        stdout = ""
+        retcode = -1
+        t_start = time.time()
+        t_end = 0
+
+        self._stdin.write(cmd)
+        self._stdin.write(cmd_end)
+        self._stdin.flush()
+
+        while not self._stop:
+            if 0 < t_secs <= time.time() - t_start:
+                raise RunnerError("Command timed out")
+
+            line = self._stdout.readline()
+            if not line:
+                continue
+
+            if self._ignore_echo and line in [cmd, cmd_end]:
+                continue
+
+            match = matcher.match(line)
+            if match:
+                retcode = int(match.group("retcode"))
+                t_end = time.time() - t_start
+                break
+
+            if stdout_callback:
+                stdout_callback(line.rstrip())
+
+            self._logger.info(line.rstrip())
+
+            stdout += line
+
+        if self._stop:
+            retcode = 1
+            t_end = time.time() - t_start
+
+        return retcode, t_end, stdout
+
+    def run_cmd(self,
+                command: str,
+                timeout: int = 3600,
+                cwd: str = None,
+                env: dict = None,
+                stdout_callback: callable = None) -> dict:
         if not command:
             raise ValueError("command is empty")
 
         self._logger.info("Running command: %s", command)
         self._stop = False
 
-        cmd = f"{command}\n"
-        code = self._generate_string()
-        cmd_end = f"echo $?-{code}\n"
-        matcher = re.compile(f"(?P<retcode>\\d+)-{code}")
-
-        stdout = ""
-        retcode = None
-        t_start = time.time()
-        t_end = 0
         t_secs = max(timeout, 0)
+        retcode = -1
+        t_end = 0
+        stdout = ""
+
+        cmd = ""
+        if cwd:
+            cmd = f"cd {cwd} && "
+
+        if env:
+            for key, value in env.items():
+                cmd += f"export {key}={value} && "
+
+        cmd += f"{command}\n"
 
         try:
-            self._stdin.write(cmd)
-            self._stdin.write(cmd_end)
-            self._stdin.flush()
-
-            while not self._stop:
-                if 0 < t_secs <= time.time() - t_start:
-                    raise RunnerError("Command timed out")
-
-                line = self._stdout.readline()
-                if not line:
-                    continue
-
-                if self._ignore_echo and line in [cmd, cmd_end]:
-                    continue
-
-                match = matcher.match(line)
-                if match:
-                    retcode = match.group("retcode")
-                    t_end = time.time() - t_start
-                    break
-
-                self._logger.info(line.rstrip())
-
-                stdout += line
+            retcode, t_end, stdout = self._send(cmd, timeout, stdout_callback)
         except OSError as err:
             raise RunnerError(err)
-
-        if self._stop:
-            retcode = 1
-            t_end = time.time() - t_start
 
         ret = {
             "command": command,
@@ -128,6 +157,8 @@ class SerialRunner(Runner):
             "returncode": int(retcode),
             "stdout": stdout,
             "exec_time": t_end,
+            "env": env,
+            "cwd": cwd,
         }
 
         self._logger.debug(ret)

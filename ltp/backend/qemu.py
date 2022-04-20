@@ -31,7 +31,6 @@ class QemuBackend(Backend):
     """
 
     def __init__(self, **kwargs) -> None:
-        self._ltpdir = kwargs.get("ltpdir", "/opt/ltp")
         self._tmpdir = kwargs.get("tmpdir", None)
         self._image = kwargs.get("image", None)
         self._image_overlay = kwargs.get("image_overlay", None)
@@ -70,10 +69,6 @@ class QemuBackend(Backend):
 
         if self._serial not in ["isa", "virtio"]:
             raise ValueError("Serial protocol must be isa or virtio")
-
-        self._qemu_tmp = os.path.join(self._tmpdir, "qemu")
-        if not os.path.exists(self._qemu_tmp):
-            os.mkdir(self._qemu_tmp)
 
     def _vm_wait_and_send(self, towait: Any, tosend: str) -> None:
         """
@@ -150,8 +145,8 @@ class QemuBackend(Backend):
         self._logger.info("Starting virtual machine")
 
         pid = os.getpid()
-        tty_log = os.path.join(self._qemu_tmp, f"ttyS0-{pid}.log")
-        transport_file = os.path.join(self._qemu_tmp, f"transport-{pid}")
+        tty_log = os.path.join(self._tmpdir, f"ttyS0-{pid}.log")
+        transport_file = os.path.join(self._tmpdir, f"transport-{pid}")
         transport_dev = ""
 
         image = self._image
@@ -227,17 +222,7 @@ class QemuBackend(Backend):
             transport_dev,
             transport_file)
 
-        self._logger.info("Exporting LTP variables")
-
-        testcases = os.path.join(self._ltpdir, "testcases", "bin")
-        colors = os.environ.get("LTP_COLORIZE_OUTPUT", "y")
-
-        # TODO: handle TMPDIR?
         self._runner.run_cmd("export PS1=''", 1)
-        self._runner.run_cmd(f"export PATH=$PATH:{testcases}", 1)
-        self._runner.run_cmd(f"export LTPROOT={self._ltpdir}", 1)
-        self._runner.run_cmd(f"export LTP_COLORIZE_OUTPUT={colors}", 1)
-        self._runner.run_cmd("cd $LTPROOT", 1)
 
         # mount virtual FS
         if self._virtfs:

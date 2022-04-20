@@ -19,21 +19,9 @@ class ShellRunner(Runner):
     Shell Runner implementation class.
     """
 
-    def __init__(self, cwd: str = None, env: dict = None) -> None:
-        """
-        :param cwd: current working directory
-        :type cwd: str
-        :param env: environment variables
-        :type env: dict
-        """
+    def __init__(self) -> None:
         self._logger = logging.getLogger("ltp.runner.shell")
         self._process = None
-        self._cwd = cwd
-        self._env = env
-
-    @property
-    def name(self) -> str:
-        return "shell"
 
     def start(self) -> None:
         pass
@@ -54,7 +42,12 @@ class ShellRunner(Runner):
         self._process.kill()
         self._logger.info("Process killed")
 
-    def _run_cmd_impl(self, command: str, timeout: int) -> dict:
+    def run_cmd(self,
+                command: str,
+                timeout: int = 3600,
+                cwd: str = None,
+                env: dict = None,
+                stdout_callback: callable = None) -> dict:
         if self._process:
             self._logger.debug(
                 "Process with pid=%d is already running",
@@ -78,8 +71,8 @@ class ShellRunner(Runner):
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            cwd=self._cwd,
-            env=self._env,
+            cwd=cwd,
+            env=env,
             shell=True,
             universal_newlines=True,
             preexec_fn=os.setsid)
@@ -107,6 +100,9 @@ class ShellRunner(Runner):
                     t_end = time.time() - t_start
                     break
 
+                if stdout_callback:
+                    stdout_callback(line.rstrip())
+
                 self._logger.info(line.rstrip())
                 stdout += line
 
@@ -116,6 +112,8 @@ class ShellRunner(Runner):
                 "returncode": self._process.returncode,
                 "timeout": t_secs,
                 "exec_time": t_end,
+                "cwd": cwd,
+                "env": env,
             }
             self._logger.debug("return data=%s", ret)
         except subprocess.TimeoutExpired as err:

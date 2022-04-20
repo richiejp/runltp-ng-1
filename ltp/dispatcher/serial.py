@@ -97,6 +97,15 @@ class SerialDispatcher(Dispatcher):
         avail_suites = []
         results = []
 
+        env = {}
+        env["LTPROOT"] = self._ltpdir
+        env["TMPDIR"] = self._tmpdir
+        env["LTP_COLORIZE_OUTPUT"] = os.environ.get("LTP_COLORIZE_OUTPUT", "y")
+
+        # PATH must be set in order to run bash scripts
+        testcases = os.path.join(self._ltpdir, "testcases", "bin")
+        env["PATH"] = f'$PATH:{testcases}'
+
         try:
             for suite_name in suites:
                 if self._stop:
@@ -140,7 +149,12 @@ class SerialDispatcher(Dispatcher):
                         cmd = f"{test.command} {args}"
 
                         # TODO: set specific timeout for each test?
-                        test_data = backend.runner.run_cmd(cmd, 3600)
+                        test_data = backend.runner.run_cmd(
+                            cmd,
+                            timeout=3600,
+                            cwd=self._ltpdir,
+                            env=env)
+
                         test_results = self._get_test_results(test, test_data)
                         tests_results.append(test_results)
 

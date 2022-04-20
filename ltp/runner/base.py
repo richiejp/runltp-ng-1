@@ -19,26 +19,15 @@ class Runner:
     Runner permits to execute commands on target using a specific protocol.
     """
 
-    @property
-    def name(self) -> str:
-        """
-        Name of the runner.
-        :returns: str
-        """
-        raise NotImplementedError()
-
     def start(self) -> None:
         """
         Start runner.
         """
         raise NotImplementedError()
 
-    def stop(self, timeout: int = 0) -> None:
+    def stop(self) -> None:
         """
         Stop Runner.
-        :param timeout: timeout before raising an exception. If 0, no timeout
-            will be applied.
-        :type timeout: int
         """
         raise NotImplementedError()
 
@@ -48,59 +37,37 @@ class Runner:
         """
         raise NotImplementedError()
 
-    def _run_cmd_impl(self, command: str, timeout: int) -> dict:
+    def run_cmd(self,
+                command: str,
+                timeout: int = 3600,
+                cwd: str = None,
+                env: dict = None,
+                stdout_callback: callable = None) -> dict:
         """
-        Run a command on target. This has to be implemented by the class that
-        is inheriting Runner class.
+        Run a command on target.
         :param command: command to execute
-        :param timeout: timeout before raising an exception. If 0, no timeout
-            will be applied.
+        :param timeout: seconds before raising an exception. If 0, no timeout
+            will be applied. Default is 3600.
         :type timeout: int
+        :param cwd: current working directory
+        :type cwd: str
+        :param env: environment variables
+        :type env: dict
+        :param stdout_callback: callback that can be used to get stdout lines
+            in realtime.
+        :type stdout_callback: callable
         :returns: dictionary containing command execution information
 
             {
-                "command": <mycommand>,
-                "timeout": <timeout>,
-                "returncode": <returncode>,
-                "stdout": <stdout>,
-                "exec_time": <exec_time>,
+                "command": <str>,
+                "timeout": <int>,
+                "returncode": <int>,
+                "stdout": <str>,
+                "exec_time": <int>,
+                "cwd": <str>,
+                "env": <dict>,
             }
 
             If None is returned, then callback failed.
         """
         raise NotImplementedError()
-
-    def run_cmd(self, command: str, timeout: int) -> dict:
-        """
-        Run a command on target.
-        :param command: command to execute
-        :param timeout: timeout before raising an exception. If 0, no timeout
-            will be applied.
-        :type timeout: int
-        :returns: dictionary containing command execution information
-
-            {
-                "command": <mycommand>,
-                "timeout": <timeout>,
-                "returncode": <returncode>,
-                "stdout": <stdout>,
-                "exec_time": <exec_time>,
-            }
-
-            If None is returned, then callback failed.
-        """
-        ret = self._run_cmd_impl(command, timeout)
-        if not ret:
-            return None
-
-        if "command" not in ret or \
-            "timeout" not in ret or \
-            "returncode" not in ret or \
-            "stdout" not in ret or \
-                "exec_time" not in ret:
-            raise RunnerError(
-                "_run_single_test needs to be implemented properly. "
-                "Returned dictionary should contain correct data. "
-                "Please check documentation")
-
-        return ret

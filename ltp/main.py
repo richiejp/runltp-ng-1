@@ -142,6 +142,7 @@ def _setup_debug_log(tmpdir: str) -> None:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
+
 def _ltp_host(args: Namespace) -> None:
     """
     Handle "host" subcommand.
@@ -176,7 +177,7 @@ def _ltp_host(args: Namespace) -> None:
             tmpdir = TempRotator(tmpbase).rotate()
             _setup_debug_log(tmpdir)
 
-            factory = LocalBackendFactory(ltpdir, tmpdir)
+            factory = LocalBackendFactory()
             dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
 
             results = dispatcher.exec_suites(args.run_suite)
@@ -213,7 +214,6 @@ def _ltp_qemu(args: Namespace) -> None:
 
     try:
         factory = QemuBackendFactory(
-            ltpdir=ltpdir,
             tmpdir=tmpdir,
             image=args.image,
             image_overlay=args.image_overlay,
