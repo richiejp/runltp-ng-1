@@ -7,6 +7,7 @@ from ltp.backend import Backend
 from ltp.backend import LocalBackend
 from ltp.backend import LocalBackendFactory
 from ltp.backend import QemuBackend
+from ltp.backend.ssh import SSHBackend, SSHBackendFactory
 from ltp.metadata import RuntestMetadata
 
 TEST_QEMU_IMAGE = os.environ.get("TEST_QEMU_IMAGE", None)
@@ -172,3 +173,104 @@ class TestQemuBackend:
             assert ret["returncode"] == 0
         finally:
             backend.stop()
+
+
+class TestSSHBackend:
+    """
+    Test the SSHBackend implementation.
+    """
+
+    @pytest.fixture(scope="module")
+    def config(self):
+        """
+        Fixture exposing configuration
+        """
+        class Config:
+            """
+            Configuration class
+            """
+            import pwd
+            hostname = "127.0.0.1"
+            port = 2222
+            testsdir = os.path.abspath(os.path.dirname(__file__))
+            currdir = os.path.abspath('.')
+            user = pwd.getpwuid(os.geteuid()).pw_name
+            user_key = os.path.sep.join([testsdir, 'id_rsa'])
+            user_key_pub = os.path.sep.join([testsdir, 'id_rsa.pub'])
+
+        return Config()
+
+    @pytest.mark.usefixtures("ssh_server")
+    def test_communicate_runner(self, config):
+        """
+        Test runner after communicate.
+        """
+        backend = SSHBackend(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+        try:
+            backend.communicate()
+
+            assert backend.runner is not None
+
+            for _ in range(0, 20):
+                ret = backend.runner.run_cmd("echo 'hello world'", 1)
+                assert 'hello world\n' in ret["stdout"]
+                assert ret["returncode"] == 0
+                assert ret["exec_time"] > 0
+                assert ret["timeout"] == 1
+                assert ret["command"] == "echo 'hello world'"
+        finally:
+            backend.stop()
+
+    @pytest.mark.usefixtures("ssh_server")
+    def test_communicate_downloader(self, tmpdir, config):
+        """
+        Test downloader after communicate.
+        """
+        target_folder = tmpdir.mkdir("target")
+
+        backend = SSHBackend(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+        try:
+            backend.communicate()
+
+            assert backend.runner is not None
+            assert backend.downloader is not None
+
+            for i in range(0, 20):
+                target_path = f"/{str(target_folder)}/myfile{i}"
+                message = f"hello world{i}"
+
+                with open(target_path, "w") as tpath:
+                    tpath.write(message)
+
+                local_path = str(tmpdir / f"myfile{i}")
+
+                # download file in local_path
+                backend.downloader.fetch_file(target_path, local_path)
+                with open(local_path, "r") as target:
+                    assert target.read() == f"{message}"
+        finally:
+            backend.stop()
+
+    def test_factory(self, config):
+        """
+        Test SSHBackendFactory create() method.
+        """
+        factory = SSHBackendFactory(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+        backend = factory.create()
+
+        assert isinstance(backend, Backend)

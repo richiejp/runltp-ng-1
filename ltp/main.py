@@ -15,6 +15,7 @@ import tempfile
 import logging
 import logging.config
 from argparse import Namespace
+from ltp.backend.ssh import SSHBackendFactory
 
 import ltp.install
 from ltp import LTPException
@@ -241,6 +242,53 @@ def _ltp_qemu(args: Namespace) -> None:
             dispatcher.stop()
 
 
+def _ltp_ssh(args: Namespace) -> None:
+    """
+    Handle "ssh" subcommand.
+    """
+    logger = logging.getLogger("ltp.main")
+
+    if not args.key_file and not args.password:
+        logger.info("Please use --key-file or --password options")
+        return
+
+    if args.json_report and os.path.exists(args.json_report):
+        logger.error("JSON report file already exists: %s", args.json_report)
+        return
+
+    ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
+    tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
+    tmpdir = TempRotator(tmpbase).rotate()
+    dispatcher = None
+
+    try:
+        factory = SSHBackendFactory(
+            ltpdir=ltpdir,
+            tmpdir=tmpdir,
+            host=args.host,
+            port=args.port,
+            user=args.user,
+            password=args.password,
+            key_file=args.key_file,
+            timeout=args.timeout,
+        )
+
+        dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
+        results = dispatcher.exec_suites(args.run_suite)
+
+        for result in results:
+            _print_results(result)
+
+        if args.json_report:
+            exporter = JSONExporter()
+            exporter.save_file(results, args.json_report)
+    except LTPException as err:
+        logger.error("Error: %s", str(err))
+    except KeyboardInterrupt:
+        if dispatcher:
+            dispatcher.stop()
+
+
 def _ltp_install(args: Namespace) -> None:
     """
     Handle "install" subcommand.
@@ -350,6 +398,58 @@ def run() -> None:
         required=True,
         help="Run testing suites in Qemu VM")
     qemu_parser.add_argument(
+        "--json-report",
+        "-j",
+        type=str,
+        help="JSON output report")
+
+    # ssh subcommand parsing
+    ssh_parser = subparsers.add_parser("ssh")
+    ssh_parser.set_defaults(func=_ltp_ssh)
+    ssh_parser.add_argument(
+        "--host",
+        "-a",
+        type=str,
+        default="127.0.0.1",
+        help="Remote hostname IP address. Default is 127.0.0.1")
+    ssh_parser.add_argument(
+        "--port",
+        "-p",
+        type=int,
+        default=22,
+        help="Remote hostname IP port. Default is 22")
+    ssh_parser.add_argument(
+        "--user",
+        "-u",
+        type=str,
+        default="root",
+        help="Remote user name. Default is 'root'")
+    ssh_parser.add_argument(
+        "--password",
+        "-v",
+        type=str,
+        default=None,
+        help="Remote password")
+    ssh_parser.add_argument(
+        "--key-file",
+        "-k",
+        type=str,
+        default=None,
+        help="Private key")
+    ssh_parser.add_argument(
+        "--timeout",
+        "-t",
+        type=int,
+        default=3600,
+        help="SSH operations timeout. Default is 1 hour")
+    ssh_parser.add_argument(
+        "--run-suite",
+        "-s",
+        type=str,
+        nargs="*",
+        required=True,
+        help="Run testing suites in Qemu VM")
+    ssh_parser.add_argument(
         "--json-report",
         "-j",
         type=str,
