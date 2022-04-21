@@ -173,12 +173,12 @@ static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 		if (res < 0)
 			break;
 
-		while ((size_t)res >= iov[iov_i].iov_len) {
+		while ((size_t)res > iov[iov_i].iov_len) {
 			res -= iov[iov_i].iov_len;
 			iov_i++;
 		}
 
-		if (iov_i == iov_len)
+		if ((size_t)res == iov[iov_i].iov_len)
 			break;
 
 		iov[iov_i].iov_len -= res;
@@ -289,7 +289,7 @@ static void event_loop(void)
 
 			ltx_pong();
 
-			if (ev->events | EPOLLHUP)
+			if (ev->events & EPOLLHUP)
 				return;
 		}
 	}
@@ -301,5 +301,6 @@ int main(void)
 
 	event_loop();
 
+	LTX_LOG("Exiting");
 	return 0;
 }

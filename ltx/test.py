@@ -1,42 +1,70 @@
+import time
 import pytest
-import signal
 import sys
+import os
 import subprocess as sp
-import threading
-from queue import Queue, Empty
 
 from msgpack import packb, unpackb
-from pexpect import run
-from pexpect.popen_spawn import PopenSpawn
-from pexpect.spawnbase import SpawnBase
 
-class LtxSpawn(PopenSpawn):
-    """Overrides PopenSpawns __init__ to seperate stderr from stdout
+proc = None
+buf = b''
 
-    Copy and pasted from popen_spawn.py
-    """
-    def __init__(self):
-        super(PopenSpawn, self).__init__(
-            timeout=1,
-            logfile=sys.stdout.buffer
+def read():
+    return os.read(proc.stdout.fileno(), 8196)
+
+def expect_exact(bs):
+    global buf
+
+    l = len(bs)
+
+    while len(buf) < l:
+        buf += read()
+
+    for i in range(l):
+        if buf[i] == bs[i]:
+            continue
+
+        raise ValueError(
+            f"Expected {hex(bs[i])}, but got {hex(buf[i])} at {i} in '{buf.hex(' ')}'"
         )
 
-        self.proc = sp.Popen(
-            ["./ltx"],
-            bufsize=0,
-            stdin=sp.PIPE,
-            stderr=sp.PIPE,
-            stdout=sp.PIPE,
-        )
-        self.pid = self.proc.pid
-        self.closed = False
-        self._buf = self.string_type()
+    buf = buf[l:]
 
-        self._read_queue = Queue()
-        self._read_thread = threading.Thread(target=self._read_incoming)
-        self._read_thread.setDaemon(True)
-        self._read_thread.start()
 
+def expect_n_bytes(n):
+    global buf
+
+    while len(buf) < n:
+        buf += read()
+
+    buf = buf[n:]
+    
+def send(bs):
+    assert proc.stdin.write(bs) == len(bs)
+    # echo
+    expect_exact(bs)
+
+def reopen():
+    global proc
+    global buf
+
+    if (proc != None):
+        proc.kill()
+        buf = b''
+
+    proc = sp.Popen(
+        ["./ltx"],
+        bufsize=0,
+        stdin=sp.PIPE,
+        stdout=sp.PIPE,
+        stderr=sp.PIPE
+    )
+
+def run(args):
+    sp.run(args.split(' '),
+           stdout=sp.PIPE, stderr=sp.STDOUT,
+           check=True)
+    
 CFLAGS = '-Wall -Wextra -Werror -fno-omit-frame-pointer -fsanitize=address,undefined'
 CFILES = 'ltx.c -o ltx'
 
@@ -45,52 +73,33 @@ def spawn():
 
 class TestLtx:
     def test_compile_gcc(self):
-        log, status = run('gcc {} {}'.format(CFLAGS, CFILES), withexitstatus=1)
-        print(log)
-        assert status == 0
+        run(f"gcc {CFLAGS} {CFILES}")
 
     def test_compile_clang(self):
-        log, status = run('clang {} {}'.format(CFLAGS, CFILES), withexitstatus=1)
-        print(log)
-        assert status == 0
+        run(f"clang {CFLAGS} {CFILES}")
 
     def test_version_nolib(self):
-        p = spawn()
-
-        assert p.expect_exact(b'\x93\x02\xc0\xd9/[ltx.c:main:245] Linux Test Executor 0.0.1-dev\n') == 0
-
-        p.kill(signal.SIGTERM)
-        p.wait()
+        reopen()
+        expect_exact(b'\x93\x04\xc0\xd9/[ltx.c:main:300] Linux Test Executor 0.0.1-dev\n')
 
     def test_version(self):
-        p = spawn()
-
-        assert p.expect_exact(packb([2, None, "[ltx.c:main:245] Linux Test Executor 0.0.1-dev\n"])) == 0
-
-        p.kill(signal.SIGTERM)
-        p.wait()
+        reopen()
+        expect_exact(packb([4, None, "[ltx.c:main:300] Linux Test Executor 0.0.1-dev\n"]))
 
     def test_ping_nolib(self):
-        p = spawn()
-
         # Ping: [0]
-        assert p.send(b'\x91\x00') == 2
-        # Pong: [0]
-        assert p.expect_exact(b'\x91\x00') == 0
-
-        p.kill(signal.SIGTERM)
-        p.wait()
+        send(b'\x91\x00')
+        # Pong: [1, time]
+        expect_exact(b'\x92\x01\xcf')
+        expect_n_bytes(8)
 
     def test_ping(self):
-        p = spawn()
-
         # Ping
-        assert p.send(packb([0])) == 2
+        send(packb([0]))
         # Pong
-        assert p.expect_exact(packb([0])) == 0
+        expect_exact(packb([1, time.monotonic_ns()])[:-8])
+        expect_n_bytes(8)
 
-        p.kill(signal.SIGTERM)
-        p.wait()
 
 
 
