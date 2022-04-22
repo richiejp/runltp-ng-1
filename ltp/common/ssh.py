@@ -105,12 +105,16 @@ class SSH(SSHBase):
 
             self._logger.info("Connecting to %s:%d", self._host, self._port)
 
+            pkey = None
+            if self._key_file:
+                pkey = RSAKey.from_private_key_file(self._key_file)
+
             self._client.connect(
                 self._host,
                 port=self._port,
                 username=self._user,
                 password=self._password,
-                pkey=RSAKey.from_private_key_file(self._key_file),
+                pkey=pkey,
                 timeout=self._timeout)
 
             self._logger.info("Connected to host")
