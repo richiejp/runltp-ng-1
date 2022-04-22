@@ -12,6 +12,7 @@ import socket
 from paramiko import SSHClient
 from paramiko import AutoAddPolicy
 from paramiko import SSHException
+from paramiko import RSAKey
 from scp import SCPClient
 from scp import SCPException
 from ltp import LTPException
@@ -109,7 +110,7 @@ class SSH(SSHBase):
                 port=self._port,
                 username=self._user,
                 password=self._password,
-                key_filename=self._key_file,
+                pkey=RSAKey.from_private_key_file(self._key_file),
                 timeout=self._timeout)
 
             self._logger.info("Connected to host")
