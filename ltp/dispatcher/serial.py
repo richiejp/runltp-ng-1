@@ -103,7 +103,8 @@ class SerialDispatcher(Dispatcher):
 
         # PATH must be set in order to run bash scripts
         testcases = os.path.join(self._ltpdir, "testcases", "bin")
-        env["PATH"] = f'$PATH:{testcases}'
+        env["PATH"] = "/sbin:/usr/sbin:/usr/local/sbin:" + \
+            f"/root/bin:/usr/local/bin:/usr/bin:/bin:{testcases}"
 
         try:
             for suite_name in suites:
