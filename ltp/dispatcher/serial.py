@@ -7,13 +7,14 @@
 """
 import os
 from ltp import LTPException
-from ltp.backend.base import Backend
-from ltp.metadata.base import Suite, Test
-from ltp.results.base import TestResults
 from ltp.runner import Runner
+from ltp.backend import Backend
 from ltp.backend import BackendFactory
+from ltp.metadata import Suite
+from ltp.metadata import Test
 from ltp.metadata import RuntestMetadata
 from ltp.results import SuiteResults
+from ltp.results import TestResults
 from ltp.common.events import Events
 from .base import Dispatcher
 from .base import DispatcherError
