@@ -23,11 +23,15 @@ class ShellRunner(Runner):
         self._logger = logging.getLogger("ltp.runner.shell")
         self._process = None
 
+    @property
+    def is_running(self) -> bool:
+        return self._process is not None
+
     def start(self) -> None:
         pass
 
     def stop(self, _: int = 0) -> None:
-        if not self._process:
+        if not self.is_running:
             return
 
         self._logger.info("Terminating process")
@@ -35,7 +39,7 @@ class ShellRunner(Runner):
         self._logger.info("Process terminated")
 
     def force_stop(self) -> None:
-        if not self._process:
+        if not self.is_running:
             return
 
         self._logger.info("Killing process")

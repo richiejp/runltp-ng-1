@@ -10,6 +10,7 @@ import time
 import string
 import secrets
 import logging
+import threading
 from typing import IO
 from .base import Runner
 from .base import RunnerError
@@ -39,7 +40,9 @@ class SerialRunner(Runner):
         self._stdin = stdin
         self._stdout = stdout
         self._ignore_echo = ignore_echo
+        self._lock = threading.Lock()
         self._stop = False
+        self._running = False
 
         if not self._stdin:
             raise ValueError("stdin is empty")
@@ -47,13 +50,22 @@ class SerialRunner(Runner):
         if not self._stdout:
             raise ValueError("stdout is empty")
 
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
     # pylint: disable=consider-using-with
     def start(self) -> None:
         pass
 
     def stop(self) -> None:
+        if not self.is_running:
+            return
+
         self._logger.info("Stopping command")
         self._stop = True
+        self._lock.acquire()
+        self._logger.info("Command stopped")
 
     def force_stop(self) -> None:
         self.stop()
@@ -89,7 +101,9 @@ class SerialRunner(Runner):
         self._stdin.write(cmd_end)
         self._stdin.flush()
 
-        while not self._stop:
+        # always run the command until the end because we dont have a way
+        # to send CTRL+C to command via serial port
+        while True:
             if 0 < t_secs <= time.time() - t_start:
                 raise RunnerError("Command timed out")
 
@@ -114,8 +128,9 @@ class SerialRunner(Runner):
             stdout += line
 
         if self._stop:
-            retcode = 1
-            t_end = time.time() - t_start
+            retcode = -1
+
+        t_end = time.time() - t_start
 
         return retcode, t_end, stdout
 
@@ -145,23 +160,32 @@ class SerialRunner(Runner):
                 cmd += f"export {key}={value} && "
 
         cmd += f"{command}\n"
+        ret = None
 
         try:
+            self._running = True
+
             retcode, t_end, stdout = self._send(cmd, timeout, stdout_callback)
+
+            ret = {
+                "command": command,
+                "timeout": t_secs,
+                "returncode": int(retcode),
+                "stdout": stdout,
+                "exec_time": t_end,
+                "env": env,
+                "cwd": cwd,
+            }
+
+            self._logger.debug(ret)
+            self._logger.info("Command completed")
         except OSError as err:
             raise RunnerError(err)
+        finally:
+            self._stdin.flush()
+            if self._stop:
+                self._lock.release()
 
-        ret = {
-            "command": command,
-            "timeout": t_secs,
-            "returncode": int(retcode),
-            "stdout": stdout,
-            "exec_time": t_end,
-            "env": env,
-            "cwd": cwd,
-        }
-
-        self._logger.debug(ret)
-        self._logger.info("Command completed")
+            self._running = False
 
         return ret

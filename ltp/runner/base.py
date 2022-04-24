@@ -19,6 +19,13 @@ class Runner:
     Runner permits to execute commands on target using a specific protocol.
     """
 
+    @property
+    def is_running(self) -> bool:
+        """
+        Return True if object is running.
+        """
+        raise NotImplementedError()
+
     def start(self) -> None:
         """
         Start runner.
