@@ -19,6 +19,13 @@ class Downloader:
     A downloader is used to download files from target to local host.
     """
 
+    @property
+    def is_running(self) -> bool:
+        """
+        Return True if object is running.
+        """
+        raise NotImplementedError()
+
     def fetch_file(self, target_path: str, local_path: str) -> None:
         """
         Fetch file from target path and download it in the specified

@@ -7,6 +7,7 @@
 """
 import os
 import logging
+import threading
 from .base import Downloader
 from .base import DownloaderError
 
@@ -19,11 +20,23 @@ class LocalDownloader(Downloader):
 
     def __init__(self) -> None:
         self._logger = logging.getLogger("ltp.downloader.local")
-        self._fetching = False
+        self._stop = False
+        self._running = False
+        self._lock = threading.Lock()
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
 
     def stop(self) -> None:
+        if not self.is_running:
+            return
+
         self._logger.info("Stopping all current operations")
-        self._fetching = False
+        self._stop = True
+
+        # pylint: disable=consider-using-with
+        self._lock.acquire()
 
     def fetch_file(self, target_path: str, local_path: str) -> None:
         if not target_path:
@@ -37,19 +50,24 @@ class LocalDownloader(Downloader):
 
         self._logger.info("Copy '%s' to '%s'", target_path, local_path)
 
-        self._fetching = True
+        self._stop = False
+        self._running = True
 
         try:
             with open(target_path, 'rb') as ftarget:
                 with open(local_path, 'wb+') as flocal:
                     data = ftarget.read(1024)
-                    while data != b'' and self._fetching:
+                    while data != b'' and not self._stop:
                         flocal.write(data)
                         data = ftarget.read(1024)
         except IOError as err:
             raise DownloaderError(err)
+        finally:
+            if self._stop:
+                self._logger.info("Copy stopped")
+                self._lock.release()
+                self._stop = False
+            else:
+                self._logger.info("File copied")
 
-        if not self._fetching:
-            self._logger.info("Copy stopped")
-        else:
-            self._logger.info("File copied")
+            self._running = False
