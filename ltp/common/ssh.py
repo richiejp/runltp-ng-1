@@ -93,6 +93,14 @@ class SSH(SSHBase):
         """
         super().__init__(**kwargs)
         self._stop = False
+        self._running = False
+
+    @property
+    def is_running(self) -> bool:
+        """
+        Return True if object is running.
+        """
+        return self._running
 
     def connect(self) -> None:
         """
@@ -176,6 +184,8 @@ class SSH(SSHBase):
         self._logger.info(
             "Executing command (timeout=%d): %s", timeout, command)
 
+        self._running = True
+
         t_secs = max(timeout, 0)
         t_start = time.time()
         t_end = 0
@@ -218,6 +228,8 @@ class SSH(SSHBase):
         except FileNotFoundError as err:
             # key not found
             raise SSHError(err)
+        finally:
+            self._running = False
 
         ret = {
             "command": command,
@@ -249,6 +261,7 @@ class SSH(SSHBase):
             raise ValueError("local path is empty")
 
         self._stop = False
+        self._running = True
 
         self._logger.info("Transfer file: %s -> %s", target_path, local_path)
 
@@ -259,5 +272,7 @@ class SSH(SSHBase):
                 if self._stop and scp.channel.closed:
                     return
                 raise SSHError(err)
+            finally:
+                self._running = False
 
         self._logger.info("File transfer completed")
