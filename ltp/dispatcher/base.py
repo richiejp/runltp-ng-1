@@ -33,6 +33,7 @@ class Dispatcher:
         :returns: TestResults
         """
         stdout = test_data["stdout"]
+
         match = re.search(
             r"Summary:\n"
             r"passed\s*(?P<passed>\d+)\n"
@@ -60,13 +61,24 @@ class Dispatcher:
             skipped = int(match.group("skipped"))
             warnings = int(match.group("warnings"))
         else:
-            # if no results are given, this is probably an
-            # old test implementation that fails when return
-            # code is != 0
-            if retcode != 0:
-                failed = 1
-            else:
-                passed = 1
+            passed = len(re.findall("TPASS", stdout))
+            failed = len(re.findall("TFAIL", stdout))
+            skipped = len(re.findall("TSKIP", stdout))
+            broken = len(re.findall("TBROK", stdout))
+            warnings = len(re.findall("TWARN", stdout))
+
+            if passed == 0 and \
+                    failed == 0 and \
+                    skipped == 0 and \
+                    broken == 0 and \
+                    warnings == 0:
+                # if no results are given, this is probably an
+                # old test implementation that fails when return
+                # code is != 0
+                if retcode != 0:
+                    failed = 1
+                else:
+                    passed = 1
 
         result = TestResults(
             test=test,
