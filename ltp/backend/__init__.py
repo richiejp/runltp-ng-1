@@ -12,6 +12,8 @@ from .local import LocalBackend
 from .local import LocalBackendFactory
 from .qemu import QemuBackend
 from .qemu import QemuBackendFactory
+from .ssh import SSHBackendFactory
+from .ssh import SSHBackend
 
 __all__ = [
     "Backend",
@@ -21,4 +23,6 @@ __all__ = [
     "LocalBackendFactory",
     "QemuBackend",
     "QemuBackendFactory",
+    "SSHBackend",
+    "SSHBackendFactory",
 ]
