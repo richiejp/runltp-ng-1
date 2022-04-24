@@ -23,6 +23,13 @@ class Backend:
     """
 
     @property
+    def name(self) -> str:
+        """
+        Name of the backend.
+        """
+        raise NotImplementedError()
+
+    @property
     def runner(self) -> Runner:
         """
         Object used to execute commands on target. It's None if communicate()
@@ -38,10 +45,13 @@ class Backend:
         """
         raise NotImplementedError()
 
-    def communicate(self) -> None:
+    def communicate(self, stdout_callback: callable = None) -> None:
         """
         Start communicating with the backend and it initialize internal
         communication objects such as runner and downloader.
+        :param stdout_callback: callback that is called all the times a new
+            line came out from stdout during backend execution.
+        :type stdout_callback: callable
         """
         raise NotImplementedError()
 

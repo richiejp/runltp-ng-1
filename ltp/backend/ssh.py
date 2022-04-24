@@ -22,6 +22,10 @@ class SSHClient(Runner, Downloader, SSH):
     implementations.
     """
 
+    @property
+    def is_running(self) -> bool:
+        return super().is_running
+
     def start(self) -> None:
         self.connect()
 
@@ -63,6 +67,10 @@ class SSHBackend(SSHBase, Backend):
         self._running = False
 
     @property
+    def name(self) -> str:
+        return "ssh"
+
+    @property
     def downloader(self) -> Downloader:
         return self._client
 
@@ -70,7 +78,7 @@ class SSHBackend(SSHBase, Backend):
     def runner(self) -> Runner:
         return self._client
 
-    def communicate(self) -> None:
+    def communicate(self, stdout_callback: callable = None) -> None:
         if self._running:
             raise BackendError("Backend is already running")
 

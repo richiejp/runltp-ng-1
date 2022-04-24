@@ -24,6 +24,10 @@ class LocalBackend(Backend):
         self._runner = None
 
     @property
+    def name(self) -> str:
+        return "host"
+
+    @property
     def downloader(self) -> Downloader:
         return self._downloader
 
@@ -31,7 +35,7 @@ class LocalBackend(Backend):
     def runner(self) -> Runner:
         return self._runner
 
-    def communicate(self) -> None:
+    def communicate(self, stdout_callback: callable = None) -> None:
         if self._downloader or self._runner:
             raise BackendError("Backend is already running")
 

@@ -70,7 +70,11 @@ class QemuBackend(Backend):
         if self._serial not in ["isa", "virtio"]:
             raise ValueError("Serial protocol must be isa or virtio")
 
-    def _vm_wait_and_send(self, towait: Any, tosend: str) -> None:
+    def _vm_wait_and_send(
+            self,
+            towait: Any,
+            tosend: str,
+            stdout_callback: callable) -> None:
         """
         Wait for a string and send a reply.
         """
@@ -91,12 +95,19 @@ class QemuBackend(Backend):
 
             if data == '\n':
                 self._logger.info(line.rstrip())
+                if stdout_callback:
+                    stdout_callback(line.rstrip())
+
                 line = ""
 
         exitcode = self._proc.poll()
         if exitcode and exitcode != 0:
             raise BackendError(
                 f"Qemu session ended with exit code {exitcode}")
+
+    @property
+    def name(self) -> str:
+        return "qemu"
 
     @property
     def runner(self) -> Runner:
@@ -112,9 +123,20 @@ class QemuBackend(Backend):
 
         self._logger.info("Shutting down virtual machine")
 
+        self._runner.stop()
+        self._downloader.stop()
+
+        self._proc.stdin.write("\n")
         self._proc.stdin.write("poweroff")
         self._proc.stdin.write("\n")
-        self._proc.stdin.flush()
+
+        try:
+            self._proc.stdin.flush()
+        except BrokenPipeError:
+            # sometimes we need to flush data after poweroff is sent,
+            # but if poweroff already shutted down VM, we'll obtain a
+            # BrokenPipeError that has to be ignored in this case
+            pass
 
         start_t = time.time()
         while self._proc.poll() is None:
@@ -135,7 +157,7 @@ class QemuBackend(Backend):
         self._logger.info("Virtual machine killed")
 
     # pylint: disable=too-many-statements
-    def communicate(self) -> None:
+    def communicate(self, stdout_callback: callable = None) -> None:
         if self._proc:
             raise BackendError("Virtual machine is already running")
 
@@ -210,9 +232,18 @@ class QemuBackend(Backend):
             shell=True,
             universal_newlines=True)
 
-        self._vm_wait_and_send("login:", "root")
-        self._vm_wait_and_send(("Password:", "password:"), self._password)
-        self._vm_wait_and_send("#", "\n")
+        self._vm_wait_and_send(
+            "login:",
+            "root",
+            stdout_callback=stdout_callback)
+        self._vm_wait_and_send(
+            ("Password:", "password:"),
+            self._password,
+            stdout_callback=stdout_callback)
+        self._vm_wait_and_send(
+            "#",
+            "\n",
+            stdout_callback=stdout_callback)
 
         self._logger.info("Creating communication objects")
 
