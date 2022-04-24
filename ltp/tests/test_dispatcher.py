@@ -2,9 +2,16 @@
 Unit tests for dispatcher implementations.
 """
 import pytest
+from ltp.common.events import Events
 from ltp.dispatcher import DispatcherError
 from ltp.dispatcher import SerialDispatcher
 from ltp.backend import LocalBackendFactory
+
+
+class DummyEvents(Events):
+    """
+    A dummy events class for dispatcher implementations.
+    """
 
 
 class TestSerialDispatcher:
@@ -19,13 +26,20 @@ class TestSerialDispatcher:
         factory = LocalBackendFactory()
 
         with pytest.raises(ValueError):
-            SerialDispatcher(str(tmpdir), None, factory)
+            SerialDispatcher(str(tmpdir), None, factory, DummyEvents())
 
         with pytest.raises(ValueError):
-            SerialDispatcher(str(tmpdir), "this_folder_doesnt_exist", factory)
+            SerialDispatcher(
+                str(tmpdir),
+                "this_folder_doesnt_exist",
+                factory,
+                DummyEvents())
 
         with pytest.raises(ValueError):
-            SerialDispatcher(str(tmpdir), str(tmpdir), None)
+            SerialDispatcher(str(tmpdir), str(tmpdir), None, DummyEvents())
+
+        with pytest.raises(ValueError):
+            SerialDispatcher(str(tmpdir), str(tmpdir), factory, None)
 
     @pytest.mark.usefixtures("prepare_tmpdir")
     def test_exec_suites_bad_args(self, tmpdir):
@@ -33,7 +47,11 @@ class TestSerialDispatcher:
         Test exec_suites() method with bad arguments.
         """
         factory = LocalBackendFactory()
-        dispatcher = SerialDispatcher(str(tmpdir), str(tmpdir), factory)
+        dispatcher = SerialDispatcher(
+            str(tmpdir),
+            str(tmpdir),
+            factory,
+            DummyEvents())
 
         with pytest.raises(ValueError):
             dispatcher.exec_suites(None)
@@ -47,7 +65,11 @@ class TestSerialDispatcher:
         Test exec_suites() method.
         """
         factory = LocalBackendFactory()
-        dispatcher = SerialDispatcher(str(tmpdir), str(tmpdir), factory)
+        dispatcher = SerialDispatcher(
+            str(tmpdir),
+            str(tmpdir),
+            factory,
+            DummyEvents())
 
         results = dispatcher.exec_suites(suites=["dirsuite0", "dirsuite2"])
 

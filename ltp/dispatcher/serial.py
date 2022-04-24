@@ -6,10 +6,15 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
+from ltp import LTPException
+from ltp.backend.base import Backend
+from ltp.metadata.base import Suite, Test
+from ltp.results.base import TestResults
 from ltp.runner import Runner
 from ltp.backend import BackendFactory
 from ltp.metadata import RuntestMetadata
 from ltp.results import SuiteResults
+from ltp.common.events import Events
 from .base import Dispatcher
 from .base import DispatcherError
 
@@ -23,7 +28,8 @@ class SerialDispatcher(Dispatcher):
             self,
             ltpdir: str,
             tmpdir: str,
-            backend_factory: BackendFactory) -> None:
+            backend_factory: BackendFactory,
+            events: Events) -> None:
         """
         :param ltpdir: LTP install directory
         :type ltpdir: str
@@ -31,12 +37,15 @@ class SerialDispatcher(Dispatcher):
         :type tmpdir: str
         :param backend_factory: backend factory object
         :type backend_factory: BackendFactory
+        :param events: session events object
+        :type events: Events
         """
         self._ltpdir = ltpdir
         self._tmpdir = tmpdir
         self._is_running = False
         self._stop = False
         self._backend_factory = backend_factory
+        self._events = events
         self._metadata = RuntestMetadata()
 
         if not self._tmpdir or not os.path.isdir(self._tmpdir):
@@ -44,6 +53,9 @@ class SerialDispatcher(Dispatcher):
 
         if not self._backend_factory:
             raise ValueError("Backend factory is empty")
+
+        if not self._events:
+            raise ValueError("No events are given")
 
     def _read_available_suites(self, runner: Runner) -> list:
         """
@@ -68,7 +80,7 @@ class SerialDispatcher(Dispatcher):
         """
         Read SUT information using command runner.
         """
-        ret = runner.run_cmd(cmd, 10)
+        ret = runner.run_cmd(cmd, timeout=10)
         if ret["returncode"] != 0:
             raise DispatcherError(f"Can't read information from SUT: {cmd}")
 
@@ -83,10 +95,106 @@ class SerialDispatcher(Dispatcher):
     def stop(self) -> None:
         self._stop = True
 
-    # pylint: disable=too-many-locals
+    def _run_test(
+            self,
+            backend: Backend,
+            test: Test,
+            env: dict) -> TestResults:
+        """
+        Run a single test and return the test results.
+        """
+        self._events.test_started(test)
+
+        args = " ".join(test.arguments)
+        cmd = f"{test.command} {args}"
+
+        # wrapper around stdout callback
+        def _mystdout_line(line):
+            self._events.test_stdout_line(test, line)
+
+        # TODO: set specific timeout for each test?
+        test_data = backend.runner.run_cmd(
+            cmd,
+            timeout=3600,
+            cwd=self._ltpdir,
+            env=env,
+            stdout_callback=_mystdout_line
+        )
+
+        results = self._get_test_results(test, test_data)
+
+        self._events.test_completed(results)
+
+        return results
+
+    def _run_suite(self, suite: Suite, backend: Backend) -> SuiteResults:
+        """
+        Run a single testing suite and return suite results.
+        """
+        env = {}
+        env["LTPROOT"] = self._ltpdir
+        env["LTP_COLORIZE_OUTPUT"] = os.environ.get("LTP_COLORIZE_OUTPUT", "n")
+
+        # PATH must be set in order to run bash scripts
+        testcases = os.path.join(self._ltpdir, "testcases", "bin")
+        env["PATH"] = "/sbin:/usr/sbin:/usr/local/sbin:" + \
+            f"/root/bin:/usr/local/bin:/usr/bin:/bin:{testcases}"
+
+        suite_results = None
+
+        try:
+            self._events.suite_started(suite)
+
+            # execute tests
+            tests_results = []
+            backend.runner.start()
+
+            for test in suite.tests:
+                if self._stop:
+                    backend.runner.stop()
+                    return None
+
+                results = self._run_test(backend, test, env)
+                if not results:
+                    break
+
+                tests_results.append(results)
+
+            # create suite results
+            distro_str = self._read_sut_info(
+                backend.runner,
+                ". /etc/os-release; echo \"$ID\"")
+            distro_ver_str = self._read_sut_info(
+                backend.runner,
+                ". /etc/os-release; echo \"$VERSION_ID\"")
+            kernel_str = self._read_sut_info(
+                backend.runner,
+                "uname -s -r -v")
+            arch_str = self._read_sut_info(
+                backend.runner,
+                "uname -m")
+
+            suite_results = SuiteResults(
+                suite=suite,
+                tests=tests_results,
+                distro=distro_str,
+                distro_ver=distro_ver_str,
+                kernel=kernel_str,
+                arch=arch_str)
+        finally:
+            self._events.backend_stop(backend.name)
+            backend.stop()
+
+            if suite_results:
+                self._events.suite_completed(suite_results)
+
+        return suite_results
+
     def exec_suites(self, suites: list) -> list:
         if not suites:
             raise ValueError("suites list is empty")
+
+        self._events.session_started(suites)
 
         # create temporary directory where saving suites files
         tmp_suites = os.path.join(self._tmpdir, "suites")
@@ -94,17 +202,7 @@ class SerialDispatcher(Dispatcher):
             os.mkdir(tmp_suites)
 
         self._is_running = True
-        avail_suites = []
         results = []
-
-        env = {}
-        env["LTPROOT"] = self._ltpdir
-        env["LTP_COLORIZE_OUTPUT"] = os.environ.get("LTP_COLORIZE_OUTPUT", "y")
-
-        # PATH must be set in order to run bash scripts
-        testcases = os.path.join(self._ltpdir, "testcases", "bin")
-        env["PATH"] = "/sbin:/usr/sbin:/usr/local/sbin:" + \
-            f"/root/bin:/usr/local/bin:/usr/bin:/bin:{testcases}"
 
         try:
             for suite_name in suites:
@@ -113,78 +211,56 @@ class SerialDispatcher(Dispatcher):
 
                 backend = self._backend_factory.create()
 
-                try:
-                    backend.communicate()
+                self._events.backend_start(backend.name)
 
-                    if not avail_suites:
-                        avail_suites = self._read_available_suites(
-                            backend.runner)
+                # wrapper around stdout callback
+                # pylint: disable=cell-var-from-loop
+                def _mystdout_line(line):
+                    self._events.backend_stdout_line(backend.name, line)
 
-                    if suite_name not in avail_suites:
-                        raise DispatcherError(
-                            f"'{suite_name}' is not available. "
-                            "Available suites are: "
-                            f"{' '.join(avail_suites)}"
-                        )
+                backend.communicate(stdout_callback=_mystdout_line)
 
-                    # download testing suite inside temporary directory
-                    # TODO: handle different metadata
-                    target = os.path.join(self._ltpdir, "runtest", suite_name)
-                    local = os.path.join(tmp_suites, suite_name)
-                    backend.downloader.fetch_file(target, local)
+                avail_suites = self._read_available_suites(backend.runner)
+                if suite_name not in avail_suites:
+                    raise DispatcherError(
+                        f"'{suite_name}' suite is not available. "
+                        "Available suites are: "
+                        f"{' '.join(avail_suites)}"
+                    )
 
-                    # convert testing suites files
-                    suite = self._metadata.read_suite(local)
+                # download testing suite inside temporary directory
+                target = os.path.join(self._ltpdir, "runtest", suite_name)
+                local = os.path.join(tmp_suites, suite_name)
 
-                    # execute tests
-                    tests_results = []
-                    backend.runner.start()
+                self._events.suite_download_started(
+                    suite_name,
+                    target,
+                    local)
 
-                    for test in suite.tests:
-                        if self._stop:
-                            backend.runner.stop()
-                            break
+                backend.downloader.fetch_file(target, local)
 
-                        args = " ".join(test.arguments)
-                        cmd = f"{test.command} {args}"
+                self._events.suite_download_completed(
+                    suite_name,
+                    target,
+                    local)
 
-                        # TODO: set specific timeout for each test?
-                        test_data = backend.runner.run_cmd(
-                            cmd,
-                            timeout=3600,
-                            cwd=self._ltpdir,
-                            env=env)
+                suite = self._metadata.read_suite(local)
 
-                        test_results = self._get_test_results(test, test_data)
-                        tests_results.append(test_results)
+                result = self._run_suite(suite, backend)
+                if not result:
+                    break
 
-                    # create suite results
-                    distro_str = self._read_sut_info(
-                        backend.runner,
-                        ". /etc/os-release; echo \"$ID\"")
-                    distro_ver_str = self._read_sut_info(
-                        backend.runner,
-                        ". /etc/os-release; echo \"$VERSION_ID\"")
-                    kernel_str = self._read_sut_info(
-                        backend.runner,
-                        "uname -s -r -v")
-                    arch_str = self._read_sut_info(
-                        backend.runner,
-                        "uname -m")
-
-                    suite_results = SuiteResults(
-                        suite=suite,
-                        tests=tests_results,
-                        distro=distro_str,
-                        distro_ver=distro_ver_str,
-                        kernel=kernel_str,
-                        arch=arch_str)
-
-                    results.append(suite_results)
-                finally:
-                    backend.stop()
+                results.append(result)
+        except KeyboardInterrupt:
+            self.stop()
+            self._events.session_stopped()
+        except LTPException as err:
+            self._events.session_error(str(err))
+            raise err
         finally:
             self._is_running = False
             self._stop = False
+
+            self._events.session_completed(results)
 
         return results

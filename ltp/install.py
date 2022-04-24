@@ -5,9 +5,10 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
+import time
 import logging
 import subprocess
-import argparse
+from argparse import ArgumentParser
 from argparse import Namespace
 
 
@@ -26,6 +27,8 @@ class Installer:
     def __init__(self) -> None:
         self._logger = logging.getLogger("ltp.installer")
         self._logger.debug("initialized installer for %s", self.distro_id)
+        self._proc = None
+        self._stop = False
 
     @property
     def distro_id(self) -> str:
@@ -78,40 +81,86 @@ class Installer:
         """
         raise NotImplementedError()
 
-    def _run_cmd(self, cmd: str, cwd: str = None, raise_err=True) -> None:
+    def stop(self):
+        """
+        Stop any install operation.
+        """
+        if not self._proc:
+            return
+
+        self._logger.info("Stopping installer")
+
+        self._stop = True
+        while self._stop:
+            time.sleep(0.2)
+
+        self._logger.info("Installer stopped")
+
+    def _run_cmd(
+            self,
+            cmd: str,
+            cwd: str = None,
+            raise_err: bool = True,
+            stdout_callback: callable = None) -> None:
         """
         Run a command inside the shell
         """
         self._logger.info("Running command '%s'", cmd)
 
-        with subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                cwd=cwd,
-                shell=True,
-                universal_newlines=True) as proc:
+        self._stop = False
 
-            for line in iter(proc.stdout.readline, b''):
+        # pylint: disable=consider-using-with
+        self._proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=cwd,
+            shell=True,
+            universal_newlines=True)
+
+        try:
+            while self._proc.poll() is None:
+                if self._stop:
+                    break
+
+                line = self._proc.stdout.readline()
                 if not line:
                     break
 
                 self._logger.info(line.rstrip())
 
-            proc.wait()
+                if stdout_callback:
+                    stdout_callback(line.rstrip())
 
-        if raise_err and proc.returncode != 0:
-            raise InstallerError(f"'{cmd}' return code: {proc.returncode}")
+            self._proc.wait()
 
-    def _clone_repo(self, url: str, repo_dir: str) -> None:
+            if raise_err and self._proc.returncode != 0:
+                raise InstallerError(
+                    f"'{cmd}' return code: {self._proc.returncode}")
+        finally:
+            self._proc.terminate()
+            self._proc = None
+            self._stop = False
+
+    def clone_repo(
+            self,
+            url: str,
+            repo_dir: str,
+            stdout_callback: callable = None) -> None:
         """
         Run LTP installation from Git repository.
         """
         self._logger.info("Cloning repository..")
-        self._run_cmd(f"git clone --depth=1 {url} {repo_dir}")
+        self._run_cmd(
+            f"git clone --depth=1 {url} {repo_dir}",
+            stdout_callback=stdout_callback)
         self._logger.info("Cloning completed")
 
-    def _install_from_src(self, repo_dir: str, install_dir: str) -> None:
+    def install_from_src(
+            self,
+            repo_dir: str,
+            install_dir: str,
+            stdout_callback: callable = None) -> None:
         """
         Run LTP installation from Git repository.
         """
@@ -120,14 +169,26 @@ class Installer:
         cpus = subprocess.check_output(
             ['getconf', '_NPROCESSORS_ONLN']).rstrip().decode("utf-8")
 
-        self._run_cmd("make autotools", repo_dir)
-        self._run_cmd("./configure --prefix=" + install_dir, repo_dir)
-        self._run_cmd(f"make -j{cpus}", repo_dir)
+        self._run_cmd(
+            "make autotools",
+            cwd=repo_dir,
+            stdout_callback=stdout_callback)
+        self._run_cmd(
+            "./configure --prefix=" + install_dir,
+            cwd=repo_dir,
+            stdout_callback=stdout_callback)
+        self._run_cmd(
+            f"make -j{cpus}",
+            cwd=repo_dir,
+            stdout_callback=stdout_callback)
         self._run_cmd("make install", repo_dir)
 
         self._logger.info("Compiling completed")
 
-    def _install_requirements(self, m32_support: bool) -> None:
+    def install_requirements(
+            self,
+            m32_support: bool,
+            stdout_callback: callable = None) -> None:
         """
         Install requirements for LTP installation according with Linux distro.
         """
@@ -143,8 +204,13 @@ class Installer:
         pkgs.extend(self.get_libs_pkgs(m32_support))
         pkgs.extend(self.get_tools_pkgs())
 
-        self._run_cmd(self.refresh_cmd, raise_err=False)
-        self._run_cmd(f"{self.install_cmd} {' '.join(pkgs)}")
+        self._run_cmd(
+            self.refresh_cmd,
+            raise_err=False,
+            stdout_callback=stdout_callback)
+        self._run_cmd(
+            f"{self.install_cmd} {' '.join(pkgs)}",
+            stdout_callback=stdout_callback)
 
         self._logger.info("Installation completed")
 
@@ -152,7 +218,8 @@ class Installer:
                 m32_support: bool,
                 url: str,
                 repo_dir: str,
-                install_dir: str) -> None:
+                install_dir: str,
+                stdout_callback: callable = None) -> None:
         """
         Run LTP installation from Git repository.
         :param m32_support: If True, 32bit support will be installed.
@@ -163,6 +230,9 @@ class Installer:
         :type repo_dir: str
         :param install_dir: LTP installation directory.
         :type install_dir: str
+        :param stdout_callback: callback called all the times a new line comes
+            arrives in the stdout
+        :type stdout_callback: callable
         :raises: InstallerError
         """
         if not url:
@@ -174,9 +244,17 @@ class Installer:
         if not install_dir:
             raise ValueError("install_dir is empty")
 
-        self._install_requirements(m32_support)
-        self._clone_repo(url, repo_dir)
-        self._install_from_src(repo_dir, install_dir)
+        self.install_requirements(
+            m32_support,
+            stdout_callback=stdout_callback)
+        self.clone_repo(
+            url,
+            repo_dir,
+            stdout_callback=stdout_callback)
+        self.install_from_src(
+            repo_dir,
+            install_dir,
+            stdout_callback=stdout_callback)
 
 
 class OpenSUSEInstaller(Installer):
@@ -567,11 +645,11 @@ def install_run(args: Namespace) -> None:
         print(str(err))
 
 
-def init_cmdline(parser: argparse.ArgumentParser) -> None:
+def init_cmdline(parser: ArgumentParser, callback: callable) -> None:
     """
     Initialize command line arguments.
     """
-    parser.set_defaults(func=install_run)
+    parser.set_defaults(func=callback)
     parser.add_argument(
         "--distro",
         metavar="DISTRO_ID",
@@ -604,8 +682,8 @@ def main():
     """
     Main point for the install script.
     """
-    parser = argparse.ArgumentParser(description='LTP packages tool')
-    init_cmdline(parser)
+    parser = ArgumentParser(description='LTP packages tool')
+    init_cmdline(parser, install_run)
 
     args = parser.parse_args()
 

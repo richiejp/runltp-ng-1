@@ -43,6 +43,7 @@ setup(
     install_requires=[
         "paramiko<=2.10.3",
         "scp<=0.14.4",
+        "rich<=12.2.0"
     ],
     # requirements to run this script
     setup_requires=[

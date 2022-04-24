@@ -7,24 +7,27 @@
 """
 import os
 import pwd
-import sys
 import pathlib
 import argparse
 import shutil
 import tempfile
 import logging
 import logging.config
+from argparse import ArgumentParser
 from argparse import Namespace
-from ltp.backend.ssh import SSHBackendFactory
 
 import ltp.install
 from ltp import LTPException
 from ltp.install import InstallerError
 from ltp.backend import LocalBackendFactory
 from ltp.backend import QemuBackendFactory
+from ltp.backend import BackendFactory
+from ltp.backend import SSHBackendFactory
 from ltp.dispatcher import SerialDispatcher
 from ltp.results import SuiteResults
 from ltp.results import JSONExporter
+from ltp.common.events import Events
+from ltp.ui import SimpleConsoleEvents
 
 
 class TempRotator:
@@ -112,21 +115,6 @@ def _print_results(suite_results: SuiteResults) -> None:
     logger.info("")
 
 
-def _init_logging() -> None:
-    """
-    Initialize logging objects.
-    """
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
-
-    formatter = logging.Formatter("%(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-
 def _setup_debug_log(tmpdir: str) -> None:
     """
     Save a log file with debugging information
@@ -144,45 +132,31 @@ def _setup_debug_log(tmpdir: str) -> None:
     logger.addHandler(handler)
 
 
-def _ltp_host(args: Namespace) -> None:
+def _get_ui_events(args: Namespace) -> Events:
     """
-    Handle "host" subcommand.
+    Return user interface events handler.
     """
-    logger = logging.getLogger("ltp.main")
+    console = SimpleConsoleEvents(args.verbose)
+    return console
 
-    if not args.list and not args.run_suite:
-        logger.info("Please use --list or --run-suite options")
-        return
 
-    if args.json_report and os.path.exists(args.json_report):
-        logger.error("JSON report file already exists: %s", args.json_report)
-        return
+def _run_suites(
+        args: Namespace,
+        factory: BackendFactory,
+        tmpdir: str) -> None:
+    """
+    Run given suites.
+    """
+    events = _get_ui_events(args)
 
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
-    tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
-
-    dispatcher = None
+    _setup_debug_log(tmpdir)
 
     try:
-        if args.list:
-            runtestdir = os.path.join(ltpdir, "runtest")
-            suites = [name for name in os.listdir(runtestdir)
-                      if os.path.isfile(os.path.join(runtestdir, name))]
+        dispatcher = SerialDispatcher(ltpdir, tmpdir, factory, events)
+        results = dispatcher.exec_suites(args.run_suite)
 
-            logger.info("Available tests:\n")
-            for suite in suites:
-                logger.info("\t%s", suite)
-
-            logger.info("")
-        else:
-            tmpdir = TempRotator(tmpbase).rotate()
-            _setup_debug_log(tmpdir)
-
-            factory = LocalBackendFactory()
-            dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
-
-            results = dispatcher.exec_suites(args.run_suite)
-
+        if results:
             for result in results:
                 _print_results(result)
 
@@ -190,129 +164,201 @@ def _ltp_host(args: Namespace) -> None:
                 exporter = JSONExporter()
                 exporter.save_file(results, args.json_report)
     except LTPException as err:
+        logger = logging.getLogger("ltp.main")
         logger.error("Error: %s", str(err))
-    except KeyboardInterrupt:
-        if dispatcher:
-            dispatcher.stop()
 
 
-def _ltp_qemu(args: Namespace) -> None:
+def _ltp_host(parser: ArgumentParser, args: Namespace) -> None:
+    """
+    Handle "host" subcommand.
+    """
+    logger = logging.getLogger("ltp.main")
+
+    if not args.list and not args.run_suite:
+        parser.error("Please use --list or --run-suite options")
+
+    if args.json_report and os.path.exists(args.json_report):
+        parser.error(f"JSON report file already exists: {args.json_report}")
+
+    ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
+
+    if args.list:
+        runtestdir = os.path.join(ltpdir, "runtest")
+        suites = [name for name in os.listdir(runtestdir)
+                  if os.path.isfile(os.path.join(runtestdir, name))]
+
+        logger.info("Available tests:\n")
+        for suite in suites:
+            logger.info("\t%s", suite)
+
+        logger.info("")
+    else:
+        tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
+        tmpdir = TempRotator(tmpbase).rotate()
+
+        _setup_debug_log(tmpdir)
+
+        factory = LocalBackendFactory()
+        _run_suites(args, factory, tmpdir)
+
+
+def _ltp_qemu(parser: ArgumentParser, args: Namespace) -> None:
     """
     Handle "qemu" subcommand.
     """
-    logger = logging.getLogger("ltp.main")
-
     if args.json_report and os.path.exists(args.json_report):
-        logger.error("JSON report file already exists: %s", args.json_report)
-        return
+        parser.error(f"JSON report file already exists: {args.json_report}")
 
-    ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
     tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
     tmpdir = TempRotator(tmpbase).rotate()
-    _setup_debug_log(tmpdir)
 
-    dispatcher = None
+    factory = QemuBackendFactory(
+        tmpdir=tmpdir,
+        image=args.image,
+        image_overlay=args.image_overlay,
+        password=args.password,
+        system=args.system,
+        ram=args.ram,
+        smp=args.smp,
+        serial=args.serial_type,
+        ro_image=args.ro_image,
+        virtfs=args.virtfs)
 
-    try:
-        factory = QemuBackendFactory(
-            tmpdir=tmpdir,
-            image=args.image,
-            image_overlay=args.image_overlay,
-            password=args.password,
-            system=args.system,
-            ram=args.ram,
-            smp=args.smp,
-            serial=args.serial_type,
-            ro_image=args.ro_image,
-            virtfs=args.virtfs)
-
-        dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
-        results = dispatcher.exec_suites(args.run_suite)
-
-        for result in results:
-            _print_results(result)
-
-        if args.json_report:
-            exporter = JSONExporter()
-            exporter.save_file(results, args.json_report)
-    except LTPException as err:
-        logger.error("Error: %s", str(err))
-    except KeyboardInterrupt:
-        if dispatcher:
-            dispatcher.stop()
+    _run_suites(args, factory, tmpdir)
 
 
-def _ltp_ssh(args: Namespace) -> None:
+def _ltp_ssh(parser: ArgumentParser, args: Namespace) -> None:
     """
     Handle "ssh" subcommand.
     """
-    logger = logging.getLogger("ltp.main")
-
     if not args.key_file and not args.password:
-        logger.info("Please use --key-file or --password options")
-        return
+        parser.error("Please use --key-file or --password options")
 
     if args.json_report and os.path.exists(args.json_report):
-        logger.error("JSON report file already exists: %s", args.json_report)
-        return
+        parser.error(f"JSON report file already exists: {args.json_report}")
 
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
     tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
     tmpdir = TempRotator(tmpbase).rotate()
-    dispatcher = None
 
-    try:
-        factory = SSHBackendFactory(
-            ltpdir=ltpdir,
-            tmpdir=tmpdir,
-            host=args.host,
-            port=args.port,
-            user=args.user,
-            password=args.password,
-            key_file=args.key_file,
-            timeout=args.timeout,
-        )
+    factory = SSHBackendFactory(
+        ltpdir=ltpdir,
+        tmpdir=tmpdir,
+        host=args.host,
+        port=args.port,
+        user=args.user,
+        password=args.password,
+        key_file=args.key_file,
+        timeout=args.timeout,
+    )
 
-        dispatcher = SerialDispatcher(ltpdir, tmpdir, factory)
-        results = dispatcher.exec_suites(args.run_suite)
-
-        for result in results:
-            _print_results(result)
-
-        if args.json_report:
-            exporter = JSONExporter()
-            exporter.save_file(results, args.json_report)
-    except LTPException as err:
-        logger.error("Error: %s", str(err))
-    except KeyboardInterrupt:
-        if dispatcher:
-            dispatcher.stop()
+    _run_suites(args, factory, tmpdir)
 
 
-def _ltp_install(args: Namespace) -> None:
+def _ltp_install(_: ArgumentParser, args: Namespace) -> None:
     """
     Handle "install" subcommand.
     """
     logger = logging.getLogger("ltp.main")
+    events = _get_ui_events(args)
 
     try:
         installer = ltp.install.get_installer()
-        installer.install(
+
+        events.install_started(
             args.m32,
             args.repo_url,
             args.repo_dir,
             args.install_dir)
+
+        # install requirements
+        events.install_requirements_started()
+
+        installer.install_requirements(
+            args.m32,
+            stdout_callback=events.install_stdout_line)
+
+        events.install_requirements_completed()
+
+        # clone repository
+        events.install_clone_repo_started(args.repo_url, args.repo_dir)
+
+        installer.clone_repo(
+            args.repo_url,
+            args.repo_dir,
+            stdout_callback=events.install_stdout_line)
+
+        events.install_clone_repo_completed(args.repo_url, args.repo_dir)
+
+        # compile and install
+        events.install_compile_started(args.repo_dir)
+
+        installer.install_from_src(
+            args.repo_dir,
+            args.install_dir,
+            stdout_callback=events.install_stdout_line)
+
+        events.install_compile_completed(args.install_dir)
+
+        events.install_completed()
     except InstallerError as err:
         logger.error("Error: %s", str(err))
+        events.install_error(str(err))
+    except KeyboardInterrupt:
+        installer.stop()
+        events.install_stopped()
+
+
+def _show_deps(parser: ArgumentParser, args: Namespace) -> None:
+    """
+    Run the installer main command.
+    """
+    if not args.build and not args.runtime and not args.tools:
+        parser.error("No packages selected!")
+
+    console = _get_ui_events(args)
+
+    try:
+        distro_id = args.distro if args.distro else None
+        installer = ltp.install.get_installer(distro_id)
+        packages = []
+        refresh_cmd = ""
+        install_cmd = ""
+
+        if args.cmd:
+            refresh_cmd = installer.refresh_cmd
+            install_cmd = installer.install_cmd
+
+        if args.build:
+            pkgs = installer.get_build_pkgs(args.m32)
+            packages.extend(pkgs)
+            pkgs = installer.get_libs_pkgs(args.m32)
+            packages.extend(pkgs)
+
+        if args.runtime:
+            pkgs = installer.get_runtime_pkgs(args.m32)
+            packages.extend(pkgs)
+
+        if args.tools:
+            pkgs = installer.get_tools_pkgs()
+            packages.extend(pkgs)
+
+        console.show_install_dependences(refresh_cmd, install_cmd, packages)
+    except InstallerError as err:
+        console.session_error(str(err))
 
 
 def run() -> None:
     """
     Entry point of the application.
     """
-    _init_logging()
-
     parser = argparse.ArgumentParser(description='LTP next-gen runner')
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Verbose mode"
+    )
     subparsers = parser.add_subparsers()
 
     # run subcommand parsing
@@ -485,11 +531,11 @@ def run() -> None:
 
     # show-deps subcommand parsing
     deps_parser = subparsers.add_parser("show-deps")
-    ltp.install.init_cmdline(deps_parser)
+    ltp.install.init_cmdline(deps_parser, _show_deps)
 
     args = parser.parse_args()
 
     if hasattr(args, "func"):
-        args.func(args)
+        args.func(parser, args)
     else:
         parser.print_help()
