@@ -61,11 +61,11 @@ class Dispatcher:
             skipped = int(match.group("skipped"))
             warnings = int(match.group("warnings"))
         else:
-            passed = len(re.findall("TPASS", stdout))
-            failed = len(re.findall("TFAIL", stdout))
-            skipped = len(re.findall("TSKIP", stdout))
-            broken = len(re.findall("TBROK", stdout))
-            warnings = len(re.findall("TWARN", stdout))
+            passed = stdout.count("TPASS")
+            failed = stdout.count("TFAIL")
+            skipped = stdout.count("TSKIP")
+            broken = stdout.count("TBROK")
+            warnings = stdout.count("TWARN")
 
             if passed == 0 and \
                     failed == 0 and \
