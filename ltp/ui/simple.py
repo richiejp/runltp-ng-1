@@ -161,6 +161,10 @@ class SimpleConsoleEvents(Events):
 
         self._console.print(f"{message}")
 
+    def show_tests_list(self, suites: list) -> None:
+        for suite in suites:
+            self._console.print(f"{suite}")
+
     def install_started(
             self,
             m32: bool,

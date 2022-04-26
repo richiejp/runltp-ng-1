@@ -183,6 +183,8 @@ def _ltp_host(parser: ArgumentParser, args: Namespace) -> None:
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
 
     if args.list:
+        events = _get_ui_events(args)
+
         runtestdir = os.path.join(ltpdir, "runtest")
         suites = [name for name in os.listdir(runtestdir)
                   if os.path.isfile(os.path.join(runtestdir, name))]
@@ -192,6 +194,8 @@ def _ltp_host(parser: ArgumentParser, args: Namespace) -> None:
             logger.info("\t%s", suite)
 
         logger.info("")
+
+        events.show_tests_list(suites)
     else:
         tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
         tmpdir = TempRotator(tmpbase).rotate()

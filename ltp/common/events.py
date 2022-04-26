@@ -150,6 +150,14 @@ class Events:
         """
         pass
 
+    def show_tests_list(self, suites: list) -> None:
+        """
+        Raised when user asked for suites list.
+        :param pkgs: list of suites names
+        :type pkgs: list(str)
+        """
+        pass
+
     def show_install_dependences(
             self,
             refresh_cmd: str,
