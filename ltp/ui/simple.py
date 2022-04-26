@@ -47,7 +47,7 @@ class SimpleConsoleEvents(Events):
         self._console = Console(highlight=False)
         self._highlighter = ResultsHighlighter()
 
-    def session_started(self, _: list) -> None:
+    def session_started(self, _: list, tmpdir: str) -> None:
         uname = platform.uname()
         message = "Host information\n\n"
         message += f"\tSystem: {uname.system}\n"
@@ -56,6 +56,7 @@ class SimpleConsoleEvents(Events):
         message += f"\tKernel Version: {uname.version}\n"
         message += f"\tMachine Architecture: {uname.machine}\n"
         message += f"\tProcessor: {uname.processor}\n"
+        message += f"\n\tTemporary directory: {tmpdir}\n"
 
         self._console.print(message)
 

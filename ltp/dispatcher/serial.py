@@ -195,7 +195,7 @@ class SerialDispatcher(Dispatcher):
         if not suites:
             raise ValueError("suites list is empty")
 
-        self._events.session_started(suites)
+        self._events.session_started(suites, self._tmpdir)
 
         # create temporary directory where saving suites files
         tmp_suites = os.path.join(self._tmpdir, "suites")
