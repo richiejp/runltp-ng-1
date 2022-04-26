@@ -1,18 +1,11 @@
+#!/usr/bin/ipython-3.9 -i
+
 import os
 import subprocess as sp
 from msgpack import packb, unpackb
 
-import IPython
-
-proc = sp.Popen(
-    ["./ltx"],
-    bufsize=0,
-    stdin=sp.PIPE,
-    stdout=sp.PIPE,
-)
-
 def read():
-    return os.read(proc.stdout.fileno(), 8196)
+    return os.read(proc.stdout.fileno(), 1 << 21)
 
 def write(bs):
     return proc.stdin.write(bs)
@@ -27,5 +20,12 @@ def reopen():
         stdin=sp.PIPE,
         stdout=sp.PIPE,
     )
+    return read()
 
-IPython.embed()
+proc = sp.Popen(
+    ["./ltx"],
+    bufsize=0,
+    stdin=sp.PIPE,
+    stdout=sp.PIPE,
+)
+read()

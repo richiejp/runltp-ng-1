@@ -1,3 +1,5 @@
+#!/usr/bin/pytest-3.9 --full-trace
+
 import time
 import pytest
 import sys
@@ -10,7 +12,7 @@ proc = None
 buf = b''
 
 def read():
-    return os.read(proc.stdout.fileno(), 8196)
+    return os.read(proc.stdout.fileno(), 1 << 21)
 
 def expect_exact(bs):
     global buf
@@ -57,7 +59,6 @@ def reopen():
         bufsize=0,
         stdin=sp.PIPE,
         stdout=sp.PIPE,
-        stderr=sp.PIPE
     )
 
 def run(args):
@@ -80,11 +81,16 @@ class TestLtx:
 
     def test_version_nolib(self):
         reopen()
-        expect_exact(b'\x93\x04\xc0\xd9/[ltx.c:main:300] Linux Test Executor 0.0.1-dev\n')
+        expect_exact(b'\x93\x04\xc0\xd9/[ltx.c:main:')
+        expect_n_bytes(3)
+        expect_exact(b'] Linux Test Executor 0.0.1-dev\n')
 
     def test_version(self):
         reopen()
-        expect_exact(packb([4, None, "[ltx.c:main:300] Linux Test Executor 0.0.1-dev\n"]))
+        ver_msg = packb([4, None, "[ltx.c:main:374] Linux Test Executor 0.0.1-dev\n"])
+        expect_exact(ver_msg[:17])
+        expect_n_bytes(3)
+        expect_exact(ver_msg[20:])
 
     def test_ping_nolib(self):
         # Ping: [0]
@@ -100,6 +106,17 @@ class TestLtx:
         expect_exact(packb([1, time.monotonic_ns()])[:-8])
         expect_n_bytes(8)
 
+    def test_ping_flood(self):
+        pings = packb([[0] for _ in range(2048)])[3:]
+        assert proc.stdin.write(pings) == len(pings)
 
+        ping_eg = packb([0])
+        pong_eg = packb([1, time.monotonic_ns()])
+        for _ in range(2048):
+            expect_exact(ping_eg)
+            expect_exact(pong_eg[:-8])
+            expect_n_bytes(8)
 
+        #expect_n_bytes(2040 * (len(ping_eg) + len(pong_eg)))
+        
 

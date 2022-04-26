@@ -25,7 +25,7 @@
 #define LTX_POS ((struct ltx_pos){ __FILE__, __func__, __LINE__ })
 #define LTX_LOG(fmt, ...) ltx_log(LTX_POS, fmt, ##__VA_ARGS__)
 
-#define assert_expr(expr, fmt, ...) do {				\
+#define ltx_assert(expr, fmt, ...) do {				\
 	if (expr)							\
 		break;							\
 									\
@@ -64,11 +64,15 @@ enum ltx_msg_types {
 	ltx_msg_env,
 	ltx_msg_exec,
 	ltx_msg_log,
+	ltx_msg_max,
 };
 
-static const int data_in = STDIN_FILENO;
-static const int data_out = STDOUT_FILENO;
-static int epfd;
+static const int in_fd = STDIN_FILENO;
+static struct ltx_buf in_buf;
+static const int out_fd = STDOUT_FILENO;
+static int out_fd_eagain;
+static struct ltx_buf out_buf;
+static int ep_fd;
 
 static const uint8_t ltx_nil = 0xc0;
 
@@ -78,15 +82,17 @@ static uint8_t ltx_fixarr(const uint8_t len)
 	return 0x90 + len;
 }
 
-__attribute__((nonnull))
-static void ltx_uint64(uint8_t *const buf, const uint64_t i)
+__attribute__((warn_unused_result))
+static uint8_t *ltx_uint64(const uint64_t i)
 {
-	int j;
+	static uint8_t buf[9];
 
 	buf[0] = 0xcf;
 
-	for (j = 1; j < 9; j++)
+	for (int j = 1; j < 9; j++)
 		buf[j] = (uint8_t)(i >> (64 - 8*j));
+
+	return buf;
 }
 
 __attribute__((pure, nonnull, warn_unused_result))
@@ -169,7 +175,7 @@ static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 	iov_i = 0;
 
 	while (1) {
-		res = writev(data_out, iov + iov_i, iov_len);
+		res = writev(out_fd, iov + iov_i, iov_len);
 		if (res < 0)
 			break;
 
@@ -239,18 +245,14 @@ static uint64_t ltx_gettime(void)
 	return ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 
-static void ltx_pong(void)
+static void ltx_out_q(const uint8_t *const data, const size_t len)
 {
-	size_t len = 0;
-	uint8_t buf[1 + 1 + 9] = {
-		ltx_fixarr(2),
-		ltx_msg_pong,
-	};
+	ltx_assert(ltx_buf_avail(&out_buf) >= len,
+		   "%zu < %zu", ltx_buf_avail(&out_buf), len);
 
-	ltx_uint64(buf + 2, ltx_gettime());
+	memcpy(ltx_buf_end(&out_buf), data, len);
 
-	while (len < 11)
-		len += LTX_EXP_POS(write(data_out, buf + len, 11));
+	out_buf.used += len;
 }
 
 static void ltx_epoll_add(const int fd, const uint32_t events)
@@ -260,38 +262,128 @@ static void ltx_epoll_add(const int fd, const uint32_t events)
 		.data = (epoll_data_t){ .fd = fd },
 	};
 
-	LTX_EXP_0(epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev));
+	LTX_EXP_0(epoll_ctl(ep_fd, EPOLL_CTL_ADD, fd, &ev));
+}
+
+static void fill_read_buf(void)
+{
+	ltx_assert(ltx_buf_avail(&in_buf) > 0, "read buffer full");
+
+	const int ilen = LTX_EXP_POS(read(in_fd,
+					  ltx_buf_end(&in_buf),
+					  ltx_buf_avail(&in_buf)));
+	in_buf.used += ilen;
+}
+
+static void drain_write_buf(void)
+{
+	while (out_buf.used) {
+		const int olen = write(out_fd, out_buf.data, out_buf.used);
+
+		if (olen < 0 && errno == EAGAIN) {
+			out_fd_eagain = 1;
+			return;
+		}
+
+		ltx_assert(olen > -1,
+			   "write(out_fd, out_buf.data, %zu): %s",
+			   out_buf.used, strerrorname_np(errno))
+
+		out_buf.used -= olen;
+
+		memmove(out_buf.data,
+			out_buf.data + olen,
+			out_buf.used);
+	}
+}
+
+static void process_msgs(void)
+{
+	const size_t used = in_buf.used;
+	size_t consumed = 0;
+
+	while (used - consumed > 1) {
+		const uint8_t *const data = in_buf.data + consumed;
+
+		ltx_assert(data[0] & 0x90,
+			   "Message should start with fixarray, not %x",
+			   data[0]);
+
+		const uint8_t msg_arr_len = data[0] & 0x0f;
+		const uint8_t msg_type = data[1];
+
+		switch (msg_type) {
+		case ltx_msg_ping:
+			ltx_assert(msg_arr_len == 1, "Ping: (msg_arr_len = %u) != 1", msg_arr_len);
+			ltx_out_q((uint8_t[]){ ltx_fixarr(1), ltx_msg_ping }, 2);
+			consumed += 2;
+
+			ltx_out_q((uint8_t[]){ ltx_fixarr(2), ltx_msg_pong }, 2);
+			ltx_out_q(ltx_uint64(ltx_gettime()), 9);
+
+			break;
+		case ltx_msg_pong:
+			ltx_assert(!ltx_msg_pong, "Not handled by executor");
+		case ltx_msg_env:
+			ltx_assert(!ltx_msg_env, "Not implemented");
+		case ltx_msg_exec:
+			ltx_assert(!ltx_msg_exec, "Not implemented");
+		case ltx_msg_log:
+			ltx_assert(!ltx_msg_log, "Not handled by executor");
+		default:
+			ltx_assert(msg_type < ltx_msg_max,
+				   "(msg_type = %u) >= ltx_msg_max",
+				   msg_type);
+		}
+
+		if (out_buf.used > BUFSIZ / 4)
+			drain_write_buf();
+	}
+
+	in_buf.used -= consumed;
+	memmove(in_buf.data, in_buf.data + consumed, in_buf.used);
 }
 
 static void event_loop(void)
 {
-	const uint8_t ping[2] = { 0x91, 0x00 };
-	uint8_t buf[2];
-	const int maxevents = 64;
+	const int maxevents = 2;
+	int stop = 0;
 	struct epoll_event events[maxevents];
 
-	epfd = LTX_EXP_FD(epoll_create1(EPOLL_CLOEXEC));
+	fcntl(out_fd, F_SETFL, O_NONBLOCK);
 
-	ltx_epoll_add(data_in, EPOLLIN);
+	ep_fd = LTX_EXP_FD(epoll_create1(EPOLL_CLOEXEC));
 
-	while (1) {
-		const int eventsn = LTX_EXP_POS(epoll_wait(epfd, events, maxevents, 100));
+	ltx_epoll_add(in_fd, EPOLLIN);
+	ltx_epoll_add(out_fd, EPOLLOUT | EPOLLET);
+
+	while (!stop) {
+		const int eventsn =
+			LTX_EXP_POS(epoll_wait(ep_fd, events, maxevents, 100));
 
 		for (int i = 0; i < eventsn; i++) {
 			const struct epoll_event *ev = events + i;
-			int l = LTX_EXP_POS(read(data_in, buf, 2));
 
-			assert_expr(l == 2, "read l = %d", l);
-			assert_expr(!memcmp(buf, ping, 2), "");
+			if (ev->events & EPOLLIN)
+				fill_read_buf();
 
-			l = LTX_EXP_POS(write(data_out, ping, 2));
-			assert_expr(l == 2, "write l = %d", l);
-
-			ltx_pong();
+			if (ev->events & EPOLLOUT)
+				out_fd_eagain = 0;
 
 			if (ev->events & EPOLLHUP)
-				return;
+				stop = 1;
 		}
+
+		if (out_buf.used && !out_fd_eagain)
+			drain_write_buf();
+
+		if (in_buf.used < 2)
+			continue;
+
+		process_msgs();
+
+		if (out_buf.used && !out_fd_eagain)
+			drain_write_buf();
 	}
 }
 
