@@ -183,6 +183,12 @@ class SerialDispatcher(Dispatcher):
                 kernel=kernel_str,
                 arch=arch_str)
         finally:
+            # read kernel messages for the current backend instance
+            dmesg_stdout = backend.runner.run_cmd("dmesg", timeout=10)
+            command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
+            with open(command, "w") as fdmesg:
+                fdmesg.write(dmesg_stdout["stdout"])
+
             self._events.backend_stop(backend.name)
             backend.stop()
 
