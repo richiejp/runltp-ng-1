@@ -128,6 +128,7 @@ class SerialDispatcher(Dispatcher):
 
         return results
 
+    # pylint: disable=too-many-locals
     def _run_suite(self, suite: Suite, backend: Backend) -> SuiteResults:
         """
         Run a single testing suite and return suite results.
@@ -186,7 +187,7 @@ class SerialDispatcher(Dispatcher):
             # read kernel messages for the current backend instance
             dmesg_stdout = backend.runner.run_cmd("dmesg", timeout=10)
             command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
-            with open(command, "w") as fdmesg:
+            with open(command, "w", encoding="utf-8") as fdmesg:
                 fdmesg.write(dmesg_stdout["stdout"])
 
             self._events.backend_stop(backend.name)
