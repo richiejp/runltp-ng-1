@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <poll.h>
 #include <time.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -67,14 +68,18 @@ enum ltx_msg_types {
 	ltx_msg_max,
 };
 
+static const uint8_t ltx_nil = 0xc0;
+
 static const int in_fd = STDIN_FILENO;
 static struct ltx_buf in_buf;
 static const int out_fd = STDOUT_FILENO;
-static int out_fd_eagain;
+static int out_fd_blocked;
 static struct ltx_buf out_buf;
 static int ep_fd;
+static pid_t ltx_pid;
 
-static const uint8_t ltx_nil = 0xc0;
+const static pid_t child_fd_off = 100;
+static pid_t childs[0x7f];
 
 __attribute__((const, warn_unused_result))
 static uint8_t ltx_fixarr(const uint8_t len)
@@ -170,6 +175,9 @@ static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 
 	res = write(STDERR_FILENO, msg.data, msg.used);
 
+	if (ltx_pid != getpid())
+		return;
+
 	iov[0].iov_base = head.data;
 	iov_len = ltx_log_msg(iov, &msg);
 	iov_i = 0;
@@ -218,7 +226,7 @@ static void ltx_exp_0(const struct ltx_pos pos,
 	exit(1);
 }
 
-__attribute__((nonnull, warn_unused_result))
+__attribute__((nonnull))
 static int ltx_exp_pos(const struct ltx_pos pos,
 		       const int ret,
 		       const char *const expr)
@@ -281,7 +289,7 @@ static void drain_write_buf(void)
 		const int olen = write(out_fd, out_buf.data, out_buf.used);
 
 		if (olen < 0 && errno == EAGAIN) {
-			out_fd_eagain = 1;
+			out_fd_blocked = 1;
 			return;
 		}
 
@@ -297,6 +305,80 @@ static void drain_write_buf(void)
 	}
 }
 
+static int process_exec_msg(const uint8_t args_n,
+			    const uint8_t *const data, const size_t len)
+{
+	uint8_t table_id;
+	size_t c = 0;
+	uint8_t path_fmt, path_len;
+	const uint8_t *path;
+	char cpath[256];
+	pid_t child;
+	int pipefd[2], child_out;
+
+	if (c == len)
+		return 0;
+
+	table_id = data[c++];
+	ltx_assert(table_id < 0x7f, "Exec: (table_id = %u) > 127", table_id);
+
+	if (c == len)
+		return 0;
+
+	path_fmt = data[c++];
+	switch (path_fmt) {
+	case 0xa0 ... 0xbf:
+		path_len = path_fmt - 0xa0;
+		ltx_assert(path_len, "Exec: Can't have empty path");
+
+		if (c == len)
+			return 0;
+
+		path = &data[c];
+		break;
+	case 0xd9:
+		if (c == len)
+			return 0;
+
+		path_len = data[c++];
+		ltx_assert(path_len > 31, "Exec: Path could fit in fixstr");
+
+		if (c == len)
+			return 0;
+
+		path = &data[c];
+		break;
+	default:
+		ltx_assert(0, "Exec: Path format = %u; not fixstr or str8",
+			   data[1]);
+	}
+
+	c += path_len;
+	if (c >= len)
+		return 0;
+
+	ltx_assert(args_n == 2, "Exec: argsv not implemented");
+
+	LTX_EXP_0(pipe2(pipefd, O_CLOEXEC));
+	child_out = LTX_EXP_FD(dup2(pipefd[0], child_fd_off + table_id));
+	ltx_epoll_add(child_out, EPOLLOUT);
+	child = LTX_EXP_POS(fork());
+
+	if (child) {
+		close(pipefd[1]);
+		childs[table_id] = child;
+		return c;
+	}
+
+	LTX_EXP_POS(dup2(pipefd[1], STDERR_FILENO));
+	LTX_EXP_POS(dup2(pipefd[1], STDOUT_FILENO));
+
+	memcpy(cpath, path, path_len);
+	cpath[path_len] = '\0';
+	LTX_EXP_0(execv(cpath, (char *const[]){}));
+	__builtin_unreachable();
+}
+
 static void process_msgs(void)
 {
 	const size_t used = in_buf.used;
@@ -304,6 +386,7 @@ static void process_msgs(void)
 
 	while (used - consumed > 1) {
 		const uint8_t *const data = in_buf.data + consumed;
+		size_t msg_consumed = 0;
 
 		ltx_assert(data[0] & 0x90,
 			   "Message should start with fixarray, not %x",
@@ -315,10 +398,12 @@ static void process_msgs(void)
 		switch (msg_type) {
 		case ltx_msg_ping:
 			ltx_assert(msg_arr_len == 1, "Ping: (msg_arr_len = %u) != 1", msg_arr_len);
-			ltx_out_q((uint8_t[]){ ltx_fixarr(1), ltx_msg_ping }, 2);
-			consumed += 2;
+			ltx_out_q((uint8_t[]){ ltx_fixarr(1), ltx_msg_ping },
+				  2);
+			msg_consumed = 2;
 
-			ltx_out_q((uint8_t[]){ ltx_fixarr(2), ltx_msg_pong }, 2);
+			ltx_out_q((uint8_t[]){ ltx_fixarr(2), ltx_msg_pong },
+				  2);
 			ltx_out_q(ltx_uint64(ltx_gettime()), 9);
 
 			break;
@@ -327,7 +412,17 @@ static void process_msgs(void)
 		case ltx_msg_env:
 			ltx_assert(!ltx_msg_env, "Not implemented");
 		case ltx_msg_exec:
-			ltx_assert(!ltx_msg_exec, "Not implemented");
+			ltx_assert(msg_arr_len > 2,
+				   "Exec: (msg_arr_len = %u) < 3",
+				   msg_arr_len);
+
+			msg_consumed = process_exec_msg(msg_arr_len - 1,
+							data + 2,
+							used - consumed - 2);
+			if (!msg_consumed)
+				goto out;
+
+			break;
 		case ltx_msg_log:
 			ltx_assert(!ltx_msg_log, "Not handled by executor");
 		default:
@@ -336,10 +431,13 @@ static void process_msgs(void)
 				   msg_type);
 		}
 
+		consumed += msg_consumed;
+
 		if (out_buf.used > BUFSIZ / 4)
 			drain_write_buf();
 	}
 
+out:
 	in_buf.used -= consumed;
 	memmove(in_buf.data, in_buf.data + consumed, in_buf.used);
 }
@@ -368,13 +466,13 @@ static void event_loop(void)
 				fill_read_buf();
 
 			if (ev->events & EPOLLOUT)
-				out_fd_eagain = 0;
+				out_fd_blocked = 0;
 
 			if (ev->events & EPOLLHUP)
 				stop = 1;
 		}
 
-		if (out_buf.used && !out_fd_eagain)
+		if (out_buf.used && !out_fd_blocked)
 			drain_write_buf();
 
 		if (in_buf.used < 2)
@@ -382,13 +480,14 @@ static void event_loop(void)
 
 		process_msgs();
 
-		if (out_buf.used && !out_fd_eagain)
+		if (out_buf.used && !out_fd_blocked)
 			drain_write_buf();
 	}
 }
 
 int main(void)
 {
+	ltx_pid = getpid();
 	LTX_LOG("Linux Test Executor " VERSION);
 
 	event_loop();
