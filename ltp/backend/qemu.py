@@ -39,7 +39,7 @@ class QemuBackend(Backend):
         self._opts = kwargs.get("options", None)
         self._ram = kwargs.get("ram", "2G")
         self._smp = kwargs.get("smp", "2")
-        self._virtfs = kwargs.get("virtfs", "/mnt")
+        self._virtfs = kwargs.get("virtfs", None)
         self._serial = kwargs.get("serial", "isa")
         self._logger = logging.getLogger("ltp.backend.qemu")
         self._proc = None
@@ -64,7 +64,7 @@ class QemuBackend(Backend):
         if not self._smp:
             raise ValueError("CPU is not defined")
 
-        if not self._virtfs or not os.path.isdir(self._virtfs):
+        if self._virtfs and not os.path.isdir(self._virtfs):
             raise ValueError("Virtual FS directory doesn't exist")
 
         if self._serial not in ["isa", "virtio"]:

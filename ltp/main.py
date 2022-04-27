@@ -427,7 +427,7 @@ def run() -> None:
         "--virtfs",
         "-v",
         type=str,
-        default="/mnt",
+        default=None,
         help="Path to a host folder to mount in the guest")
     qemu_parser.add_argument(
         "--ro-image",
@@ -543,3 +543,7 @@ def run() -> None:
         args.func(parser, args)
     else:
         parser.print_help()
+
+
+if __name__ == "__main__":
+    run()
