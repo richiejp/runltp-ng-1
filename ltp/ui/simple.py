@@ -7,8 +7,6 @@
 """
 import platform
 import traceback
-from rich.console import Console
-from rich.highlighter import Highlighter
 from ltp.metadata import Test
 from ltp.metadata import Suite
 from ltp.results import TestResults
@@ -18,34 +16,28 @@ from ltp.common.events import Events
 # pylint: disable=too-many-public-methods
 
 
-class ResultsHighlighter(Highlighter):
-    """
-    Highlight LTP result message.
-    """
-
-    def highlight(self, text):
-        """
-        Check for LTP results messages and return style accordingly.
-        """
-        if "TPASS" in text:
-            text.stylize(style="green")
-        elif "TFAIL" in text:
-            text.stylize(style="red")
-        elif "TSKIP" in text:
-            text.stylize(style="yellow")
-        elif "TCONF" in text:
-            text.stylize(style="cyan")
-
-
 class SimpleConsoleEvents(Events):
     """
     Simple events implementation for the console based user interface.
     """
 
+    GREEN = "\033[1;32m"
+    YELLOW = "\033[1;33m"
+    RED = "\033[1;31m"
+    CYAN = "\033[1;36m"
+
     def __init__(self, verbose: bool = False) -> None:
         self._verbose = verbose
-        self._console = Console(highlight=False)
-        self._highlighter = ResultsHighlighter()
+
+    @staticmethod
+    def _print(msg: str, color: str = None, end: str = "\n"):
+        """
+        Print a message.
+        """
+        if color:
+            print(color + msg + '\033[0m', end=end)
+        else:
+            print(msg, end=end)
 
     def session_started(self, _: list, tmpdir: str) -> None:
         uname = platform.uname()
@@ -58,10 +50,10 @@ class SimpleConsoleEvents(Events):
         message += f"\tProcessor: {uname.processor}\n"
         message += f"\n\tTemporary directory: {tmpdir}\n"
 
-        self._console.print(message)
+        self._print(message)
 
     def session_stopped(self) -> None:
-        self._console.print("Session stopped")
+        self._print("Session stopped")
 
     def session_error(self, error: str) -> None:
         message = f"Error: {error}"
@@ -71,17 +63,17 @@ class SimpleConsoleEvents(Events):
             if trace:
                 message += f"\n\n{trace}"
 
-        self._console.print(message)
+        self._print(message)
 
     def backend_start(self, backend: str) -> None:
-        self._console.print(f"Starting backend: {backend}")
+        self._print(f"Starting backend: {backend}")
 
     def backend_stop(self, backend: str) -> None:
-        self._console.print(f"Stopping backend: {backend}")
+        self._print(f"Stopping backend: {backend}")
 
     def backend_stdout_line(self, _: str, line: str) -> None:
         if self._verbose:
-            self._console.print(line, markup=False)
+            self._print(line)
 
     def suite_download_started(
             self,
@@ -89,13 +81,13 @@ class SimpleConsoleEvents(Events):
             target: str,
             local: str) -> None:
         if self._verbose:
-            self._console.print(
+            self._print(
                 f"Downloading suite: {target} -> {local}")
         else:
-            self._console.print(f"Downloading suite: {name}")
+            self._print(f"Downloading suite: {name}")
 
     def suite_started(self, suite: Suite) -> None:
-        self._console.print(f"Starting suite: {suite.name}")
+        self._print(f"Starting suite: {suite.name}")
 
     def suite_completed(self, results: SuiteResults) -> None:
         message = "\n"
@@ -112,37 +104,47 @@ class SimpleConsoleEvents(Events):
         message += f"Distro: {results.distro}\n"
         message += f"Distro Version: {results.distro_ver}\n\n"
 
-        self._console.print(message)
+        self._print(message)
 
     def test_started(self, test: Test) -> None:
         msg = f"{test.name}: "
         if self._verbose:
             msg = f"running {test.name}\n"
 
-        self._console.print(msg, end=None)
+        self._print(msg, end="")
 
     def test_completed(self, results: TestResults) -> None:
         if self._verbose:
             return
 
         msg = "pass"
-        col = "green"
+        col = self.GREEN
 
         if results.failed > 0:
             msg = "fail"
-            col = "red"
+            col = self.RED
         elif results.skipped > 0:
             msg = "skip"
-            col = "yellow"
+            col = self.YELLOW
         elif results.broken > 0:
             msg = "broken"
-            col = "cyan"
+            col = self.CYAN
 
-        self._console.print(msg, style=col)
+        self._print(msg, color=col)
 
     def test_stdout_line(self, _: Test, line: str) -> None:
         if self._verbose:
-            self._console.print(self._highlighter(line), markup=False)
+            col = ""
+            if "TPASS" in line:
+                col = self.GREEN
+            elif "TFAIL" in line:
+                col = self.RED
+            elif "TSKIP" in line:
+                col = self.YELLOW
+            elif "TCONF" in line:
+                col = self.CYAN
+
+            self._print(line, color=col)
 
     def show_install_dependences(
             self,
@@ -160,11 +162,11 @@ class SimpleConsoleEvents(Events):
 
         message += " ".join(pkgs)
 
-        self._console.print(f"{message}")
+        self._print(f"{message}")
 
     def show_tests_list(self, suites: list) -> None:
         for suite in suites:
-            self._console.print(f"{suite}")
+            self._print(f"{suite}")
 
     def install_started(
             self,
@@ -179,13 +181,13 @@ class SimpleConsoleEvents(Events):
         message += "32bit Support: "
         message += "Enabled\n" if m32 else "Disabled\n"
 
-        self._console.print(message)
+        self._print(message)
 
     def install_completed(self) -> None:
-        self._console.print("Done!")
+        self._print("Done!")
 
     def install_stopped(self) -> None:
-        self._console.print("Install stopped")
+        self._print("Install stopped")
 
     def install_error(self, error: str) -> None:
         message = f"Error: {error}"
@@ -195,26 +197,26 @@ class SimpleConsoleEvents(Events):
             if trace:
                 message += f"\n\n{trace}"
 
-        self._console.print(message)
+        self._print(message)
 
     def install_requirements_started(self) -> None:
-        self._console.print("Installing requirements")
+        self._print("Installing requirements")
 
     def install_requirements_completed(self) -> None:
-        self._console.print("Requirements installed")
+        self._print("Requirements installed")
 
     def install_clone_repo_started(self, repo: str, _: str) -> None:
-        self._console.print(f"Start cloning repository: {repo}")
+        self._print(f"Start cloning repository: {repo}")
 
     def install_clone_repo_completed(self, _: str, repo_dir: str) -> None:
-        self._console.print(f"Repository cloned in {repo_dir}")
+        self._print(f"Repository cloned in {repo_dir}")
 
     def install_compile_started(self, path: str) -> None:
-        self._console.print(f"Compiling LTP from folder: {path}")
+        self._print(f"Compiling LTP from folder: {path}")
 
     def install_compile_completed(self, install_dir: str) -> None:
-        self._console.print(f"LTP installed: {install_dir}")
+        self._print(f"LTP installed: {install_dir}")
 
     def install_stdout_line(self, line: str) -> None:
         if self._verbose:
-            self._console.print(line, markup=False)
+            self._print(line)
