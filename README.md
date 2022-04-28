@@ -7,12 +7,6 @@ LTP Next-Gen runner is a new version of the `runltp` script used by the
 Quickstart
 ==========
 
-To install `runltp-ng` please use `pip` as following:
-
-    pip install --prefix=<install directory> .
-
-Be sure to initialize `PATH` and `PYTHONPATH` if no virtualenv is used.
-
 Some basic commands are the following:
 
     # show testing suites on host
@@ -46,6 +40,25 @@ Every session has a temporary directory which can be found in
 `/<TMPDIR>/runltp-of<username>`. Inside this folder there's a symlink
 called `latest`, pointing to the latest session's temporary directory, and the
 application will rotate over 5 sessions.
+
+Installation via setuptools
+---------------------------
+
+To install `runltp-ng` please use `pip` as following:
+
+    pip install --prefix=<install directory> .
+
+Be sure to initialize `PATH` and `PYTHONPATH` if no virtualenv is used.
+When using virtualenv, just run:
+
+    pip install .
+
+Installation via distro packages
+--------------------------------
+
+Install `paramiko` and `scp` packages in your distribution, then run:
+
+    ./runltp-ng
 
 Running tests
 -------------
