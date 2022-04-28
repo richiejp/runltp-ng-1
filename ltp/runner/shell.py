@@ -30,7 +30,7 @@ class ShellRunner(Runner):
     def start(self) -> None:
         pass
 
-    def stop(self, _: int = 0) -> None:
+    def stop(self) -> None:
         if not self.is_running:
             return
 

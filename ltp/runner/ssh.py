@@ -22,7 +22,7 @@ class SSHRunner(SSH, Runner):
         except SSHError as err:
             raise RunnerError(err)
 
-    def stop(self, _: int = 0) -> None:
+    def stop(self) -> None:
         try:
             self.disconnect()
         except SSHError as err:

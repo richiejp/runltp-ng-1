@@ -29,7 +29,7 @@ class SSHClient(Runner, Downloader, SSH):
     def start(self) -> None:
         self.connect()
 
-    def stop(self, _: int = 0) -> None:
+    def stop(self) -> None:
         self.disconnect()
 
     def force_stop(self) -> None:

@@ -16,7 +16,7 @@ class SCPDownloader(SSH, Downloader):
     Downloader using SCP protocol.
     """
 
-    def stop(self, _: int = 0) -> None:
+    def stop(self) -> None:
         try:
             self.disconnect()
         except SSHError as err:
