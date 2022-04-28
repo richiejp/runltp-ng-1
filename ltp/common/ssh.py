@@ -9,13 +9,17 @@ import os
 import time
 import logging
 import socket
-from paramiko import SSHClient
-from paramiko import AutoAddPolicy
-from paramiko import SSHException
-from paramiko import RSAKey
-from scp import SCPClient
-from scp import SCPException
 from ltp import LTPException
+
+try:
+    from paramiko import SSHClient
+    from paramiko import AutoAddPolicy
+    from paramiko import SSHException
+    from paramiko import RSAKey
+    from scp import SCPClient
+    from scp import SCPException
+except ModuleNotFoundError:
+    pass
 
 
 class SSHError(LTPException):
@@ -54,7 +58,11 @@ class SSHBase:
         self._password = kwargs.get("password", None)
         self._key_file = kwargs.get("key_file", None)
         self._ssh_opts = kwargs.get("ssh_opts", None)
-        self._client = SSHClient()
+
+        try:
+            self._client = SSHClient()
+        except NameError:
+            self._client = None
 
         if not self._host:
             raise ValueError("host is empty")
@@ -106,6 +114,9 @@ class SSH(SSHBase):
         """
         Connect to host via SSH protocol.
         """
+        if not self._client:
+            raise SSHError("paramiko package is not installed")
+
         try:
             self._logger.info("Loading system keys")
             self._client.load_system_host_keys()
@@ -265,14 +276,17 @@ class SSH(SSHBase):
 
         self._logger.info("Transfer file: %s -> %s", target_path, local_path)
 
-        with SCPClient(self._client.get_transport()) as scp:
-            try:
-                scp.get(target_path, local_path=local_path)
-            except SCPException as err:
-                if self._stop and scp.channel.closed:
-                    return
-                raise SSHError(err)
-            finally:
-                self._running = False
+        try:
+            with SCPClient(self._client.get_transport()) as scp:
+                try:
+                    scp.get(target_path, local_path=local_path)
+                except SCPException as err:
+                    if self._stop and scp.channel.closed:
+                        return
+                    raise SSHError(err)
+                finally:
+                    self._running = False
+        except NameError:
+            raise SSHError("scp package is not installed")
 
         self._logger.info("File transfer completed")
