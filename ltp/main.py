@@ -16,9 +16,7 @@ import logging.config
 from argparse import ArgumentParser
 from argparse import Namespace
 
-import ltp.install
 from ltp import LTPException
-from ltp.install import InstallerError
 from ltp.sut import LocalSUTFactory
 from ltp.sut import QemuSUTFactory
 from ltp.sut import SUTFactory
@@ -140,10 +138,158 @@ def _get_ui_events(args: Namespace) -> Events:
     return console
 
 
-def _run_suites(
-        args: Namespace,
-        factory: SUTFactory,
-        tmpdir: str) -> None:
+def _from_params_to_config(params: list) -> dict:
+    """
+    Return a configuration as dictionary according with input parameters
+    given to the commandline option.
+    """
+    config = {}
+    for param in params:
+        if '=' not in param:
+            raise argparse.ArgumentTypeError(
+                f"Missing '=' assignment in '{param}' parameter")
+
+        data = param.split('=')
+        key = data[0]
+        value = data[1]
+
+        if not key:
+            raise argparse.ArgumentTypeError(
+                f"Empty key for '{param}' parameter")
+
+        if not key:
+            raise argparse.ArgumentTypeError(
+                f"Empty value for '{param}' parameter")
+
+        config[key] = value
+
+    return config
+
+
+def _get_qemu_config(params: list) -> dict:
+    """
+    Return qemu configuration.
+    """
+    config = _from_params_to_config(params)
+
+    if "image" not in config:
+        raise argparse.ArgumentTypeError(
+            "'image' parameter is required by qemu SUT")
+
+    defaults = {
+        'image',
+        'image_overlay',
+        'password',
+        'system',
+        'ram',
+        'smp',
+        'serial',
+        'ro_image',
+        'virtfs'
+    }
+
+    if not set(config).issubset(defaults):
+        raise argparse.ArgumentTypeError(
+            "Some parameters are not supported. "
+            f"Please use the following: {', '.join(defaults)}")
+
+    return config
+
+
+def _get_ssh_config(params: list) -> dict:
+    """
+    Return the SSH SUT configuration.
+    """
+    config = _from_params_to_config(params)
+
+    if 'host' not in config:
+        raise argparse.ArgumentTypeError(
+            "'host' parameter is required by qemu SUT")
+
+    defaults = {
+        'host',
+        'port',
+        'user',
+        'password',
+        'key_file',
+        'timeout',
+    }
+
+    if not set(config).issubset(defaults):
+        raise argparse.ArgumentTypeError(
+            "Some parameters are not supported. "
+            f"Please use the following: {', '.join(defaults)}")
+
+    return config
+
+
+def _sut_config(value: str) -> dict:
+    """
+    Return a SUT configuration according with input string.
+    Format for value is, for example:
+
+        qemu:ram=4G:smp=4:image=/local/vm.qcow2:virtfs=/opt/ltp:password=123
+
+    """
+    if not value:
+        raise argparse.ArgumentTypeError("SUT parameters can't be empty")
+
+    params = value.split(':')
+    name = params[0]
+
+    config = None
+    if name == 'qemu':
+        config = _get_qemu_config(params[1:])
+    elif name == 'ssh':
+        config = _get_ssh_config(params[1:])
+    elif name == 'host':
+        config = _from_params_to_config(params[1:])
+    else:
+        raise argparse.ArgumentTypeError(f"'{name}' SUT is not supported")
+
+    config['name'] = name
+
+    return config
+
+
+def _install_config(value: str) -> dict:
+    """
+    Return an install configuration according with the input string.
+    Format for value is, for example:
+
+        mysite.com/repo.git:commit=8f308953c60cdd25e372e8c58a3c963ab98be276
+
+    """
+    if not value:
+        raise argparse.ArgumentTypeError("Install parameters can't be empty")
+
+    params = value.split(':')
+    repo = params[0]
+    if '=' in repo:
+        raise argparse.ArgumentTypeError(
+            "First --install element must be the repository URL")
+
+    config = _from_params_to_config(params[1:])
+
+    defaults = {
+        'commit',
+        'branch',
+        'm32',
+        'repo_dir',
+        'install_dir',
+    }
+
+    if not set(config).issubset(defaults):
+        raise argparse.ArgumentTypeError(
+            "Some parameters are not supported. "
+            f"Please use the following: {', '.join(defaults)}")
+
+    config['repo'] = repo
+
+    return config
+
+
+def _run_suites(args: Namespace, factory: SUTFactory, tmpdir: str) -> None:
     """
     Run given suites.
     """
@@ -168,188 +314,41 @@ def _run_suites(
         logger.error("Error: %s", str(err))
 
 
-def _ltp_host(parser: ArgumentParser, args: Namespace) -> None:
+def _ltp_run(parser: ArgumentParser, args: Namespace) -> None:
     """
-    Handle "host" subcommand.
+    Handle runltp-ng command options.
     """
-    logger = logging.getLogger("ltp.main")
-
-    if not args.list and not args.run_suite:
-        parser.error("Please use --list or --run-suite options")
-
     if args.json_report and os.path.exists(args.json_report):
         parser.error(f"JSON report file already exists: {args.json_report}")
 
+    # create temporary directory
     ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
+    tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
+    tmpdir = TempRotator(tmpbase).rotate()
 
-    if args.list:
-        events = _get_ui_events(args)
+    _setup_debug_log(tmpdir)
 
-        runtestdir = os.path.join(ltpdir, "runtest")
-        suites = [name for name in os.listdir(runtestdir)
-                  if os.path.isfile(os.path.join(runtestdir, name))]
+    # create SUT factory
+    sut_factory = None
 
-        logger.info("Available tests:\n")
-        for suite in suites:
-            logger.info("\t%s", suite)
+    if args.sut:
+        config = args.sut
+        config['ltpdir'] = ltpdir
+        config['tmpdir'] = tmpdir
+        name = config['name']
 
-        logger.info("")
-
-        events.show_tests_list(suites)
+        if name == 'qemu':
+            sut_factory = QemuSUTFactory(**args.sut)
+        elif name == 'ssh':
+            sut_factory = SSHSUTFactory(**args.sut)
+        else:
+            raise parser.error(f"'{name}' SUT is not supported")
     else:
-        tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
-        tmpdir = TempRotator(tmpbase).rotate()
+        # default SUT is local host
+        sut_factory = LocalSUTFactory()
 
-        _setup_debug_log(tmpdir)
-
-        factory = LocalSUTFactory()
-        _run_suites(args, factory, tmpdir)
-
-
-def _ltp_qemu(parser: ArgumentParser, args: Namespace) -> None:
-    """
-    Handle "qemu" subcommand.
-    """
-    if args.json_report and os.path.exists(args.json_report):
-        parser.error(f"JSON report file already exists: {args.json_report}")
-
-    tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
-    tmpdir = TempRotator(tmpbase).rotate()
-
-    factory = QemuSUTFactory(
-        tmpdir=tmpdir,
-        image=args.image,
-        image_overlay=args.image_overlay,
-        password=args.password,
-        system=args.system,
-        ram=args.ram,
-        smp=args.smp,
-        serial=args.serial_type,
-        ro_image=args.ro_image,
-        virtfs=args.virtfs)
-
-    _run_suites(args, factory, tmpdir)
-
-
-def _ltp_ssh(parser: ArgumentParser, args: Namespace) -> None:
-    """
-    Handle "ssh" subcommand.
-    """
-    if not args.key_file and not args.password:
-        parser.error("Please use --key-file or --password options")
-
-    if args.json_report and os.path.exists(args.json_report):
-        parser.error(f"JSON report file already exists: {args.json_report}")
-
-    ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
-    tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
-    tmpdir = TempRotator(tmpbase).rotate()
-
-    factory = SSHSUTFactory(
-        ltpdir=ltpdir,
-        tmpdir=tmpdir,
-        host=args.host,
-        port=args.port,
-        user=args.user,
-        password=args.password,
-        key_file=args.key_file,
-        timeout=args.timeout,
-    )
-
-    _run_suites(args, factory, tmpdir)
-
-
-def _ltp_install(_: ArgumentParser, args: Namespace) -> None:
-    """
-    Handle "install" subcommand.
-    """
-    logger = logging.getLogger("ltp.main")
-    events = _get_ui_events(args)
-
-    try:
-        installer = ltp.install.get_installer()
-
-        events.install_started(
-            args.m32,
-            args.repo_url,
-            args.repo_dir,
-            args.install_dir)
-
-        # install requirements
-        events.install_requirements_started()
-
-        installer.install_requirements(
-            args.m32,
-            stdout_callback=events.install_stdout_line)
-
-        events.install_requirements_completed()
-
-        # clone repository
-        events.install_clone_repo_started(args.repo_url, args.repo_dir)
-
-        installer.clone_repo(
-            args.repo_url,
-            args.repo_dir,
-            stdout_callback=events.install_stdout_line)
-
-        events.install_clone_repo_completed(args.repo_url, args.repo_dir)
-
-        # compile and install
-        events.install_compile_started(args.repo_dir)
-
-        installer.install_from_src(
-            args.repo_dir,
-            args.install_dir,
-            stdout_callback=events.install_stdout_line)
-
-        events.install_compile_completed(args.install_dir)
-
-        events.install_completed()
-    except InstallerError as err:
-        logger.error("Error: %s", str(err))
-        events.install_error(str(err))
-    except KeyboardInterrupt:
-        installer.stop()
-        events.install_stopped()
-
-
-def _show_deps(parser: ArgumentParser, args: Namespace) -> None:
-    """
-    Run the installer main command.
-    """
-    if not args.build and not args.runtime and not args.tools:
-        parser.error("No packages selected!")
-
-    console = _get_ui_events(args)
-
-    try:
-        distro_id = args.distro if args.distro else None
-        installer = ltp.install.get_installer(distro_id)
-        packages = []
-        refresh_cmd = ""
-        install_cmd = ""
-
-        if args.cmd:
-            refresh_cmd = installer.refresh_cmd
-            install_cmd = installer.install_cmd
-
-        if args.build:
-            pkgs = installer.get_build_pkgs(args.m32)
-            packages.extend(pkgs)
-            pkgs = installer.get_libs_pkgs(args.m32)
-            packages.extend(pkgs)
-
-        if args.runtime:
-            pkgs = installer.get_runtime_pkgs(args.m32)
-            packages.extend(pkgs)
-
-        if args.tools:
-            pkgs = installer.get_tools_pkgs()
-            packages.extend(pkgs)
-
-        console.show_install_dependences(refresh_cmd, install_cmd, packages)
-    except InstallerError as err:
-        console.session_error(str(err))
+    # create dispatcher and run tests
+    _run_suites(args, sut_factory, tmpdir)
 
 
 def run() -> None:
@@ -363,186 +362,26 @@ def run() -> None:
         action="store_true",
         help="Verbose mode"
     )
-    subparsers = parser.add_subparsers()
-
-    # run subcommand parsing
-    host_parser = subparsers.add_parser("host")
-    host_parser.set_defaults(func=_ltp_host)
-    host_parser.add_argument(
-        "--list",
-        "-l",
-        action="store_true",
-        help="List available testing suites")
-    host_parser.add_argument(
+    parser.add_argument(
         "--run-suite",
-        "-s",
-        type=str,
-        nargs="*",
-        help="Run testing suites on host")
-    host_parser.add_argument(
-        "--json-report",
-        "-j",
-        type=str,
-        help="JSON output report")
-
-    # run subcommand parsing
-    qemu_parser = subparsers.add_parser("qemu")
-    qemu_parser.set_defaults(func=_ltp_qemu)
-    qemu_parser.add_argument(
-        "--image",
-        "-i",
-        type=str,
-        required=True,
-        help="Qemu image")
-    qemu_parser.add_argument(
-        "--image-overlay",
-        "-o",
-        type=str,
-        help="Qemu image overlay")
-    qemu_parser.add_argument(
-        "--password",
-        "-p",
-        type=str,
-        default="root",
-        help="Qemu root password. Default: root")
-    qemu_parser.add_argument(
-        "--system",
-        "-a",
-        type=str,
-        default="x86_64",
-        help="Qemu system. Default: x86_64")
-    qemu_parser.add_argument(
-        "--ram",
         "-r",
-        type=str,
-        default="1.5G",
-        help="Qemu RAM. Default: 1.5G")
-    qemu_parser.add_argument(
-        "--smp",
-        "-c",
-        type=str,
-        default="2",
-        help="Qemu number of CPUs. Default: 2")
-    qemu_parser.add_argument(
-        "--virtfs",
-        "-v",
-        type=str,
-        default=None,
-        help="Path to a host folder to mount in the guest")
-    qemu_parser.add_argument(
-        "--ro-image",
-        "-m",
-        type=str,
-        help="Path to an image which will be exposed as read only")
-    qemu_parser.add_argument(
-        "--serial-type",
-        "-t",
-        type=str,
-        default="isa",
-        help="Qemu serial protocol type. Default: isa")
-    qemu_parser.add_argument(
-        "--run-suite",
-        "-s",
-        type=str,
         nargs="*",
         required=True,
-        help="Run testing suites in Qemu VM")
-    qemu_parser.add_argument(
+        help="Suites to run")
+    parser.add_argument(
+        "--sut",
+        "-s",
+        type=_sut_config,
+        help="System Under Test parameters")
+    parser.add_argument(
         "--json-report",
         "-j",
         type=str,
         help="JSON output report")
-
-    # ssh subcommand parsing
-    ssh_parser = subparsers.add_parser("ssh")
-    ssh_parser.set_defaults(func=_ltp_ssh)
-    ssh_parser.add_argument(
-        "--host",
-        "-a",
-        type=str,
-        default="127.0.0.1",
-        help="Remote hostname IP address. Default is 127.0.0.1")
-    ssh_parser.add_argument(
-        "--port",
-        "-p",
-        type=int,
-        default=22,
-        help="Remote hostname IP port. Default is 22")
-    ssh_parser.add_argument(
-        "--user",
-        "-u",
-        type=str,
-        default="root",
-        help="Remote user name. Default is 'root'")
-    ssh_parser.add_argument(
-        "--password",
-        "-v",
-        type=str,
-        default=None,
-        help="Remote password")
-    ssh_parser.add_argument(
-        "--key-file",
-        "-k",
-        type=str,
-        default=None,
-        help="Private key")
-    ssh_parser.add_argument(
-        "--timeout",
-        "-t",
-        type=int,
-        default=3600,
-        help="SSH operations timeout. Default is 1 hour")
-    ssh_parser.add_argument(
-        "--run-suite",
-        "-s",
-        type=str,
-        nargs="*",
-        required=True,
-        help="Run testing suites in Qemu VM")
-    ssh_parser.add_argument(
-        "--json-report",
-        "-j",
-        type=str,
-        help="JSON output report")
-
-    # install subcommand parsing
-    ins_parser = subparsers.add_parser("install")
-    ins_parser.set_defaults(func=_ltp_install)
-    ins_parser.add_argument(
-        "repo_url",
-        metavar="URL",
-        type=str,
-        help="URL of the LTP repository")
-    ins_parser.add_argument(
-        "--m32",
-        "-m",
-        action="store_true",
-        help="Install LTP using 32bit support")
-    ins_parser.add_argument(
-        "--repo-dir",
-        "-r",
-        type=str,
-        default="ltp",
-        dest="repo_dir",
-        help="directory where LTP repository will be cloned")
-    ins_parser.add_argument(
-        "--install-dir",
-        "-i",
-        type=str,
-        default="/opt/ltp",
-        dest="install_dir",
-        help="directory where LTP will be installed")
-
-    # show-deps subcommand parsing
-    deps_parser = subparsers.add_parser("show-deps")
-    ltp.install.init_cmdline(deps_parser, _show_deps)
 
     args = parser.parse_args()
 
-    if hasattr(args, "func"):
-        args.func(parser, args)
-    else:
-        parser.print_help()
+    _ltp_run(parser, args)
 
 
 if __name__ == "__main__":
