@@ -1,7 +1,7 @@
 """
 .. module:: qemu
     :platform: Linux
-    :synopsis: module defining qemu backend
+    :synopsis: module defining qemu SUT
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
@@ -15,18 +15,18 @@ from ltp.runner import Runner
 from ltp.runner import SerialRunner
 from ltp.downloader import Downloader
 from ltp.downloader import TransportDownloader
-from .base import Backend
-from .base import BackendError
-from .base import BackendFactory
+from .base import SUT
+from .base import SUTError
+from .base import SUTFactory
 
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=consider-using-with
 
 
-class QemuBackend(Backend):
+class QemuSUT(SUT):
     """
-    Qemu backend spawn a new VM using qemu and execute commands inside it.
-    This Backend implementation can be used to run LTP testing suites inside
+    Qemu SUT spawn a new VM using qemu and execute commands inside it.
+    This SUT implementation can be used to run LTP testing suites inside
     a protected, virtualized environment.
     """
 
@@ -41,7 +41,7 @@ class QemuBackend(Backend):
         self._smp = kwargs.get("smp", "2")
         self._virtfs = kwargs.get("virtfs", None)
         self._serial = kwargs.get("serial", "isa")
-        self._logger = logging.getLogger("ltp.backend.qemu")
+        self._logger = logging.getLogger("ltp.sut.qemu")
         self._proc = None
         self._runner = None
         self._downloader = None
@@ -102,7 +102,7 @@ class QemuBackend(Backend):
 
         exitcode = self._proc.poll()
         if exitcode and exitcode != 0:
-            raise BackendError(
+            raise SUTError(
                 f"Qemu session ended with exit code {exitcode}")
 
     @property
@@ -142,7 +142,7 @@ class QemuBackend(Backend):
         while self._proc.poll() is None:
             time.sleep(0.2)
             if time.time() - start_t >= 30:
-                raise BackendError("Virtual machine timed out during poweroff")
+                raise SUTError("Virtual machine timed out during poweroff")
 
         self._logger.info("Virtual machine stopped")
 
@@ -159,10 +159,10 @@ class QemuBackend(Backend):
     # pylint: disable=too-many-statements
     def communicate(self, stdout_callback: callable = None) -> None:
         if self._proc:
-            raise BackendError("Virtual machine is already running")
+            raise SUTError("Virtual machine is already running")
 
         if not shutil.which(self._qemu_cmd):
-            raise BackendError(f"Command not found: {self._qemu_cmd}")
+            raise SUTError(f"Command not found: {self._qemu_cmd}")
 
         self._logger.info("Starting virtual machine")
 
@@ -262,9 +262,9 @@ class QemuBackend(Backend):
         self._logger.info("Virtual machine started")
 
 
-class QemuBackendFactory(BackendFactory):
+class QemuSUTFactory(SUTFactory):
     """
-    Factory class implementation for QemuBackend.
+    Factory class implementation for QemuSUT.
     """
 
     def __init__(self, **kwargs) -> None:
@@ -298,5 +298,5 @@ class QemuBackendFactory(BackendFactory):
         """
         self._kwargs = kwargs
 
-    def create(self) -> Backend:
-        return QemuBackend(**self._kwargs)
+    def create(self) -> SUT:
+        return QemuSUT(**self._kwargs)

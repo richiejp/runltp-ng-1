@@ -1,7 +1,7 @@
 """
 .. module:: local
     :platform: Linux
-    :synopsis: module containing Backend definition for local testing execution
+    :synopsis: module containing SUT definition for local testing execution
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
@@ -9,14 +9,14 @@ from ltp.runner import Runner
 from ltp.runner import ShellRunner
 from ltp.downloader import Downloader
 from ltp.downloader import LocalDownloader
-from .base import Backend
-from .base import BackendError
-from .base import BackendFactory
+from .base import SUT
+from .base import SUTError
+from .base import SUTFactory
 
 
-class LocalBackend(Backend):
+class LocalSUT(SUT):
     """
-    Local backend implementation for host testing.
+    Local SUT implementation for host testing.
     """
 
     def __init__(self) -> None:
@@ -37,7 +37,7 @@ class LocalBackend(Backend):
 
     def communicate(self, stdout_callback: callable = None) -> None:
         if self._downloader or self._runner:
-            raise BackendError("Backend is already running")
+            raise SUTError("SUT is already running")
 
         self._downloader = LocalDownloader()
         self._runner = ShellRunner()
@@ -51,11 +51,11 @@ class LocalBackend(Backend):
         self._downloader.stop()
 
 
-class LocalBackendFactory(BackendFactory):
+class LocalSUTFactory(SUTFactory):
     """
-    LocalBackend factory class.
+    LocalSUT factory class.
     """
 
-    def create(self) -> Backend:
-        backend = LocalBackend()
-        return backend
+    def create(self) -> SUT:
+        sut = LocalSUT()
+        return sut

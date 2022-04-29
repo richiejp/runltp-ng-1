@@ -65,13 +65,13 @@ class SimpleConsoleEvents(Events):
 
         self._print(message)
 
-    def backend_start(self, backend: str) -> None:
-        self._print(f"Starting backend: {backend}")
+    def sut_start(self, sut: str) -> None:
+        self._print(f"Connecting to SUT: {sut}")
 
-    def backend_stop(self, backend: str) -> None:
-        self._print(f"Stopping backend: {backend}")
+    def sut_stop(self, sut: str) -> None:
+        self._print(f"Disconnecting from SUT: {sut}")
 
-    def backend_stdout_line(self, _: str, line: str) -> None:
+    def sut_stdout_line(self, _: str, line: str) -> None:
         if self._verbose:
             self._print(line)
 

@@ -19,10 +19,10 @@ from argparse import Namespace
 import ltp.install
 from ltp import LTPException
 from ltp.install import InstallerError
-from ltp.backend import LocalBackendFactory
-from ltp.backend import QemuBackendFactory
-from ltp.backend import BackendFactory
-from ltp.backend import SSHBackendFactory
+from ltp.sut import LocalSUTFactory
+from ltp.sut import QemuSUTFactory
+from ltp.sut import SUTFactory
+from ltp.sut import SSHSUTFactory
 from ltp.dispatcher import SerialDispatcher
 from ltp.results import SuiteResults
 from ltp.results import JSONExporter
@@ -142,7 +142,7 @@ def _get_ui_events(args: Namespace) -> Events:
 
 def _run_suites(
         args: Namespace,
-        factory: BackendFactory,
+        factory: SUTFactory,
         tmpdir: str) -> None:
     """
     Run given suites.
@@ -202,7 +202,7 @@ def _ltp_host(parser: ArgumentParser, args: Namespace) -> None:
 
         _setup_debug_log(tmpdir)
 
-        factory = LocalBackendFactory()
+        factory = LocalSUTFactory()
         _run_suites(args, factory, tmpdir)
 
 
@@ -216,7 +216,7 @@ def _ltp_qemu(parser: ArgumentParser, args: Namespace) -> None:
     tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
     tmpdir = TempRotator(tmpbase).rotate()
 
-    factory = QemuBackendFactory(
+    factory = QemuSUTFactory(
         tmpdir=tmpdir,
         image=args.image,
         image_overlay=args.image_overlay,
@@ -245,7 +245,7 @@ def _ltp_ssh(parser: ArgumentParser, args: Namespace) -> None:
     tmpbase = os.environ.get("TMPDIR", tempfile.gettempdir())
     tmpdir = TempRotator(tmpbase).rotate()
 
-    factory = SSHBackendFactory(
+    factory = SSHSUTFactory(
         ltpdir=ltpdir,
         tmpdir=tmpdir,
         host=args.host,

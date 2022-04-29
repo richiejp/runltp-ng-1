@@ -51,28 +51,28 @@ class Events:
         """
         pass
 
-    def backend_start(self, backend: str) -> None:
+    def sut_start(self, sut: str) -> None:
         """
-        Raised when backend is starting.
-        :param backend: name of the backend
-        :type backend: str
-        """
-        pass
-
-    def backend_stop(self, backend: str) -> None:
-        """
-        Raised when backend has stopped.
-        :param backend: name of the backend
-        :type backend: str
+        Raised when SUT is starting.
+        :param SUT: name of the SUT
+        :type sut: str
         """
         pass
 
-    def backend_stdout_line(self, backend: str, line: str) -> None:
+    def sut_stop(self, sut: str) -> None:
         """
-        Raised when backend is starting and send information to stdout.
+        Raised when SUT has stopped.
+        :param SUT: name of the SUT
+        :type sut: str
+        """
+        pass
+
+    def sut_stdout_line(self, sut: str, line: str) -> None:
+        """
+        Raised when SUT is starting and send information to stdout.
         Called when a line come out from stdout.
-        :param backend: name of the backend
-        :type backend: str
+        :param SUT: name of the SUT
+        :type sut: str
         :param line: line arrived to stdout
         :type line: str
         """

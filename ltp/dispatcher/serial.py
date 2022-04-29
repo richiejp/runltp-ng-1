@@ -8,8 +8,8 @@
 import os
 from ltp import LTPException
 from ltp.runner import Runner
-from ltp.backend import Backend
-from ltp.backend import BackendFactory
+from ltp.sut import SUT
+from ltp.sut import SUTFactory
 from ltp.metadata import Suite
 from ltp.metadata import Test
 from ltp.metadata import RuntestMetadata
@@ -29,15 +29,15 @@ class SerialDispatcher(Dispatcher):
             self,
             ltpdir: str,
             tmpdir: str,
-            backend_factory: BackendFactory,
+            sut_factory: SUTFactory,
             events: Events) -> None:
         """
         :param ltpdir: LTP install directory
         :type ltpdir: str
         :param tmpdir: session temporary directory
         :type tmpdir: str
-        :param backend_factory: backend factory object
-        :type backend_factory: BackendFactory
+        :param SUT_factory: SUT factory object
+        :type SUT_factory: SUTFactory
         :param events: session events object
         :type events: Events
         """
@@ -45,15 +45,15 @@ class SerialDispatcher(Dispatcher):
         self._tmpdir = tmpdir
         self._is_running = False
         self._stop = False
-        self._backend_factory = backend_factory
+        self._sut_factory = sut_factory
         self._events = events
         self._metadata = RuntestMetadata()
 
         if not self._tmpdir or not os.path.isdir(self._tmpdir):
             raise ValueError("Temporary directory doesn't exist")
 
-        if not self._backend_factory:
-            raise ValueError("Backend factory is empty")
+        if not self._sut_factory:
+            raise ValueError("SUT factory is empty")
 
         if not self._events:
             raise ValueError("No events are given")
@@ -98,7 +98,7 @@ class SerialDispatcher(Dispatcher):
 
     def _run_test(
             self,
-            backend: Backend,
+            sut: SUT,
             test: Test,
             env: dict) -> TestResults:
         """
@@ -114,7 +114,7 @@ class SerialDispatcher(Dispatcher):
             self._events.test_stdout_line(test, line)
 
         # TODO: set specific timeout for each test?
-        test_data = backend.runner.run_cmd(
+        test_data = sut.runner.run_cmd(
             cmd,
             timeout=3600,
             cwd=self._ltpdir,
@@ -129,7 +129,7 @@ class SerialDispatcher(Dispatcher):
         return results
 
     # pylint: disable=too-many-locals
-    def _run_suite(self, suite: Suite, backend: Backend) -> SuiteResults:
+    def _run_suite(self, suite: Suite, sut: SUT) -> SuiteResults:
         """
         Run a single testing suite and return suite results.
         """
@@ -149,14 +149,14 @@ class SerialDispatcher(Dispatcher):
 
             # execute tests
             tests_results = []
-            backend.runner.start()
+            sut.runner.start()
 
             for test in suite.tests:
                 if self._stop:
-                    backend.runner.stop()
+                    sut.runner.stop()
                     return None
 
-                results = self._run_test(backend, test, env)
+                results = self._run_test(sut, test, env)
                 if not results:
                     break
 
@@ -164,16 +164,16 @@ class SerialDispatcher(Dispatcher):
 
             # create suite results
             distro_str = self._read_sut_info(
-                backend.runner,
+                sut.runner,
                 ". /etc/os-release; echo \"$ID\"")
             distro_ver_str = self._read_sut_info(
-                backend.runner,
+                sut.runner,
                 ". /etc/os-release; echo \"$VERSION_ID\"")
             kernel_str = self._read_sut_info(
-                backend.runner,
+                sut.runner,
                 "uname -s -r -v")
             arch_str = self._read_sut_info(
-                backend.runner,
+                sut.runner,
                 "uname -m")
 
             suite_results = SuiteResults(
@@ -184,14 +184,14 @@ class SerialDispatcher(Dispatcher):
                 kernel=kernel_str,
                 arch=arch_str)
         finally:
-            # read kernel messages for the current backend instance
-            dmesg_stdout = backend.runner.run_cmd("dmesg", timeout=10)
+            # read kernel messages for the current SUT instance
+            dmesg_stdout = sut.runner.run_cmd("dmesg", timeout=10)
             command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
             with open(command, "w", encoding="utf-8") as fdmesg:
                 fdmesg.write(dmesg_stdout["stdout"])
 
-            self._events.backend_stop(backend.name)
-            backend.stop()
+            self._events.sut_stop(sut.name)
+            sut.stop()
 
             if suite_results:
                 self._events.suite_completed(suite_results)
@@ -217,18 +217,18 @@ class SerialDispatcher(Dispatcher):
                 if self._stop:
                     break
 
-                backend = self._backend_factory.create()
+                sut = self._sut_factory.create()
 
-                self._events.backend_start(backend.name)
+                self._events.sut_start(sut.name)
 
                 # wrapper around stdout callback
                 # pylint: disable=cell-var-from-loop
                 def _mystdout_line(line):
-                    self._events.backend_stdout_line(backend.name, line)
+                    self._events.sut_stdout_line(sut.name, line)
 
-                backend.communicate(stdout_callback=_mystdout_line)
+                sut.communicate(stdout_callback=_mystdout_line)
 
-                avail_suites = self._read_available_suites(backend.runner)
+                avail_suites = self._read_available_suites(sut.runner)
                 if suite_name not in avail_suites:
                     raise DispatcherError(
                         f"'{suite_name}' suite is not available. "
@@ -245,7 +245,7 @@ class SerialDispatcher(Dispatcher):
                     target,
                     local)
 
-                backend.downloader.fetch_file(target, local)
+                sut.downloader.fetch_file(target, local)
 
                 self._events.suite_download_completed(
                     suite_name,
@@ -254,7 +254,7 @@ class SerialDispatcher(Dispatcher):
 
                 suite = self._metadata.read_suite(local)
 
-                result = self._run_suite(suite, backend)
+                result = self._run_suite(suite, sut)
                 if not result:
                     break
 

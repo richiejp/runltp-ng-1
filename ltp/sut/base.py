@@ -1,7 +1,7 @@
 """
 .. module:: base
     :platform: Linux
-    :synopsis: module containing Backend definition
+    :synopsis: module containing SUT definition
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
@@ -10,22 +10,22 @@ from ltp.runner import Runner
 from ltp.downloader import Downloader
 
 
-class BackendError(LTPException):
+class SUTError(LTPException):
     """
-    Raised when an error occurs into Backend.
+    Raised when an error occurs into SUT.
     """
 
 
-class Backend:
+class SUT:
     """
-    A backend is the target where tests are executed. It could be a remote
+    A SUT is the target where tests are executed. It could be a remote
     host, a local host, a virtual machine instance, etc.
     """
 
     @property
     def name(self) -> str:
         """
-        Name of the backend.
+        Name of the SUT.
         """
         raise NotImplementedError()
 
@@ -47,34 +47,34 @@ class Backend:
 
     def communicate(self, stdout_callback: callable = None) -> None:
         """
-        Start communicating with the backend and it initialize internal
+        Start communicating with the SUT and it initialize internal
         communication objects such as runner and downloader.
         :param stdout_callback: callback that is called all the times a new
-            line came out from stdout during backend execution.
+            line came out from stdout during SUT execution.
         :type stdout_callback: callable
         """
         raise NotImplementedError()
 
     def stop(self) -> None:
         """
-        Stop the current backend session.
+        Stop the current SUT session.
         """
         raise NotImplementedError()
 
     def force_stop(self) -> None:
         """
-        Force stopping the current backend session.
+        Force stopping the current SUT session.
         """
         raise NotImplementedError()
 
 
-class BackendFactory:
+class SUTFactory:
     """
     Create Factory implementations instances.
     """
 
-    def create(self) -> Backend:
+    def create(self) -> SUT:
         """
-        Create a new Backend object.
+        Create a new SUT object.
         """
         raise NotImplementedError()

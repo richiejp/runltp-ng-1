@@ -1,22 +1,22 @@
 """
-Unittests for Backend package.
+Unittests for SUT package.
 """
 import os
 import pytest
-from ltp.backend import Backend
-from ltp.backend import LocalBackend
-from ltp.backend import LocalBackendFactory
-from ltp.backend import QemuBackend
-from ltp.backend.ssh import SSHBackend, SSHBackendFactory
+from ltp.sut import SUT
+from ltp.sut import LocalSUT
+from ltp.sut import LocalSUTFactory
+from ltp.sut import QemuSUT
+from ltp.sut.ssh import SSHSUT, SSHSUTFactory
 from ltp.metadata import RuntestMetadata
 
 TEST_QEMU_IMAGE = os.environ.get("TEST_QEMU_IMAGE", None)
 TEST_QEMU_PASSWORD = os.environ.get("TEST_QEMU_PASSWORD", None)
 
 
-class TestLocalBackend:
+class TestLocalSUT:
     """
-    Test LocalBackend implementation.
+    Test LocalSUT implementation.
     """
 
     @pytest.mark.usefixtures("prepare_tmpdir")
@@ -27,16 +27,16 @@ class TestLocalBackend:
         tmp = tmpdir / "tmp"
         tmp.mkdir()
 
-        backend = LocalBackend()
-        backend.communicate()
+        SUT = LocalSUT()
+        SUT.communicate()
 
-        assert backend.downloader is not None
-        assert backend.runner is not None
+        assert SUT.downloader is not None
+        assert SUT.runner is not None
 
         target_file = tmpdir / "runtest" / "dirsuite0"
         local_file = tmpdir / "tmp" / "dirsuite0"
 
-        backend.downloader.fetch_file(target_file, local_file)
+        SUT.downloader.fetch_file(target_file, local_file)
         metadata = RuntestMetadata()
         suite = metadata.read_suite(local_file)
 
@@ -44,7 +44,7 @@ class TestLocalBackend:
 
         for test in suite.tests:
             cmd = f"{test.command} {' '.join(test.arguments)}"
-            result = backend.runner.run_cmd(
+            result = SUT.runner.run_cmd(
                 cmd,
                 timeout=10,
                 cwd=str(tmpdir),
@@ -55,21 +55,21 @@ class TestLocalBackend:
 
     def test_factory(self):
         """
-        Test LocalBackendFactory create() method with good arguments..
+        Test LocalSUTFactory create() method with good arguments..
         """
-        factory = LocalBackendFactory()
-        backend = factory.create()
+        factory = LocalSUTFactory()
+        SUT = factory.create()
 
-        assert isinstance(backend, Backend)
+        assert isinstance(SUT, SUT)
 
 
 @pytest.mark.skipif(TEST_QEMU_IMAGE is None, reason="TEST_QEMU_IMAGE is not defined")
 @pytest.mark.skipif(TEST_QEMU_PASSWORD is None, reason="TEST_QEMU_IMAGE is not defined")
 @pytest.mark.parametrize("image", [TEST_QEMU_IMAGE])
 @pytest.mark.parametrize("password", [TEST_QEMU_PASSWORD])
-class TestQemuBackend:
+class TestQemuSUT:
     """
-    Test QemuBackend implementation.
+    Test QemuSUT implementation.
     """
 
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
@@ -78,26 +78,26 @@ class TestQemuBackend:
         Test communicate method and use runner object to execute
         commands on target.
         """
-        backend = QemuBackend(
+        SUT = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             serial=serial)
 
         try:
-            backend.communicate()
+            SUT.communicate()
 
-            assert backend.runner is not None
+            assert SUT.runner is not None
 
             for _ in range(0, 100):
-                ret = backend.runner.run_cmd("echo 'hello world'", 1)
+                ret = SUT.runner.run_cmd("echo 'hello world'", 1)
                 assert 'hello world\n' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
                 assert ret["timeout"] == 1
                 assert ret["command"] == "echo 'hello world'"
         finally:
-            backend.stop()
+            SUT.stop()
 
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
     def test_communicate_downloader(self, tmpdir, image, password, serial):
@@ -105,17 +105,17 @@ class TestQemuBackend:
         Test communicate method and use downloader object to download
         files from target to host.
         """
-        backend = QemuBackend(
+        SUT = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             serial=serial)
 
         try:
-            backend.communicate()
+            SUT.communicate()
 
-            assert backend.runner is not None
-            assert backend.downloader is not None
+            assert SUT.runner is not None
+            assert SUT.downloader is not None
 
             for i in range(0, 100):
                 target_path = f"/root/myfile{i}"
@@ -123,16 +123,16 @@ class TestQemuBackend:
                 message = f"hello world{i}"
 
                 # create file on target_path
-                ret = backend.runner.run_cmd(
+                ret = SUT.runner.run_cmd(
                     f"echo '{message}' > {target_path}", 1)
                 assert ret["returncode"] == 0
 
                 # download file in local_path
-                backend.downloader.fetch_file(target_path, local_path)
+                SUT.downloader.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}\n"
         finally:
-            backend.stop()
+            SUT.stop()
 
     def test_communicate_image_overlay(self, tmpdir, image, password):
         """
@@ -140,16 +140,16 @@ class TestQemuBackend:
         """
         img_overlay = tmpdir / "image_overlay.qcow2"
 
-        backend = QemuBackend(
+        SUT = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             image_overlay=img_overlay)
 
         try:
-            backend.communicate()
+            SUT.communicate()
         finally:
-            backend.stop()
+            SUT.stop()
 
         assert os.path.isfile(img_overlay)
 
@@ -160,24 +160,24 @@ class TestQemuBackend:
         myfile = tmpdir / "myfile"
         myfile.write("")
 
-        backend = QemuBackend(
+        SUT = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             virtfs=str(tmpdir))
 
         try:
-            backend.communicate()
+            SUT.communicate()
 
-            ret = backend.runner.run_cmd(f"test -f /mnt/myfile", 1)
+            ret = SUT.runner.run_cmd(f"test -f /mnt/myfile", 1)
             assert ret["returncode"] == 0
         finally:
-            backend.stop()
+            SUT.stop()
 
 
-class TestSSHBackend:
+class TestSSHSUT:
     """
-    Test the SSHBackend implementation.
+    Test the SSHSUT implementation.
     """
 
     @pytest.fixture(scope="module")
@@ -205,26 +205,26 @@ class TestSSHBackend:
         """
         Test runner after communicate.
         """
-        backend = SSHBackend(
+        SUT = SSHSUT(
             host=config.hostname,
             port=config.port,
             user=config.user,
             key_file=config.user_key)
 
         try:
-            backend.communicate()
+            SUT.communicate()
 
-            assert backend.runner is not None
+            assert SUT.runner is not None
 
             for _ in range(0, 20):
-                ret = backend.runner.run_cmd("echo 'hello world'", 1)
+                ret = SUT.runner.run_cmd("echo 'hello world'", 1)
                 assert 'hello world\n' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
                 assert ret["timeout"] == 1
                 assert ret["command"] == "echo 'hello world'"
         finally:
-            backend.stop()
+            SUT.stop()
 
     @pytest.mark.usefixtures("ssh_server")
     def test_communicate_downloader(self, tmpdir, config):
@@ -233,17 +233,17 @@ class TestSSHBackend:
         """
         target_folder = tmpdir.mkdir("target")
 
-        backend = SSHBackend(
+        SUT = SSHSUT(
             host=config.hostname,
             port=config.port,
             user=config.user,
             key_file=config.user_key)
 
         try:
-            backend.communicate()
+            SUT.communicate()
 
-            assert backend.runner is not None
-            assert backend.downloader is not None
+            assert SUT.runner is not None
+            assert SUT.downloader is not None
 
             for i in range(0, 20):
                 target_path = f"/{str(target_folder)}/myfile{i}"
@@ -255,22 +255,22 @@ class TestSSHBackend:
                 local_path = str(tmpdir / f"myfile{i}")
 
                 # download file in local_path
-                backend.downloader.fetch_file(target_path, local_path)
+                SUT.downloader.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}"
         finally:
-            backend.stop()
+            SUT.stop()
 
     def test_factory(self, config):
         """
-        Test SSHBackendFactory create() method.
+        Test SSHSUTFactory create() method.
         """
-        factory = SSHBackendFactory(
+        factory = SSHSUTFactory(
             host=config.hostname,
             port=config.port,
             user=config.user,
             key_file=config.user_key)
 
-        backend = factory.create()
+        SUT = factory.create()
 
-        assert isinstance(backend, Backend)
+        assert isinstance(SUT, SUT)

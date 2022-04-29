@@ -5,7 +5,7 @@ import pytest
 from ltp.common.events import Events
 from ltp.dispatcher import DispatcherError
 from ltp.dispatcher import SerialDispatcher
-from ltp.backend import LocalBackendFactory
+from ltp.sut import LocalSUTFactory
 
 
 class DummyEvents(Events):
@@ -23,7 +23,7 @@ class TestSerialDispatcher:
         """
         Test constructor with bad arguments.
         """
-        factory = LocalBackendFactory()
+        factory = LocalSUTFactory()
 
         with pytest.raises(ValueError):
             SerialDispatcher(str(tmpdir), None, factory, DummyEvents())
@@ -46,7 +46,7 @@ class TestSerialDispatcher:
         """
         Test exec_suites() method with bad arguments.
         """
-        factory = LocalBackendFactory()
+        factory = LocalSUTFactory()
         dispatcher = SerialDispatcher(
             str(tmpdir),
             str(tmpdir),
@@ -64,7 +64,7 @@ class TestSerialDispatcher:
         """
         Test exec_suites() method.
         """
-        factory = LocalBackendFactory()
+        factory = LocalSUTFactory()
         dispatcher = SerialDispatcher(
             str(tmpdir),
             str(tmpdir),

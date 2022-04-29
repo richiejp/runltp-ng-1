@@ -1,7 +1,7 @@
 """
 .. module:: ssh
     :platform: Linux
-    :synopsis: module defining SSH backend
+    :synopsis: module defining SSH SUT
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
@@ -10,9 +10,9 @@ from ltp.common.ssh import SSH
 from ltp.common.ssh import SSHBase
 from ltp.downloader import Downloader
 from ltp.runner import Runner
-from .base import Backend
-from .base import BackendError
-from .base import BackendFactory
+from .base import SUT
+from .base import SUTError
+from .base import SUTFactory
 
 
 class SSHClient(Runner, Downloader, SSH):
@@ -53,14 +53,14 @@ class SSHClient(Runner, Downloader, SSH):
         self.get(target_path, local_path)
 
 
-class SSHBackend(SSHBase, Backend):
+class SSHSUT(SSHBase, SUT):
     """
-    A backend that is using SSH protocol con communicate and transfer data.
+    A SUT that is using SSH protocol con communicate and transfer data.
     """
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._logger = logging.getLogger("ltp.backend.ssh")
+        self._logger = logging.getLogger("ltp.sut.ssh")
         self._ltpdir = kwargs.get("ltpdir", "/opt/ltp")
         self._tmpdir = kwargs.get("tmpdir", None)
         self._client = SSHClient(**kwargs)
@@ -80,7 +80,7 @@ class SSHBackend(SSHBase, Backend):
 
     def communicate(self, stdout_callback: callable = None) -> None:
         if self._running:
-            raise BackendError("Backend is already running")
+            raise SUTError("SUT is already running")
 
         self._client.start()
         self._running = True
@@ -92,13 +92,13 @@ class SSHBackend(SSHBase, Backend):
         self._client.force_stop()
 
 
-class SSHBackendFactory(SSHBase, BackendFactory):
+class SSHSUTFactory(SSHBase, SUTFactory):
     """
-    Factory object for SSHBackend implementation.
+    Factory object for SSHSUT implementation.
     """
 
-    def create(self) -> Backend:
-        backend = SSHBackend(
+    def create(self) -> SUT:
+        sut = SSHSUT(
             host=self._host,
             port=self._port,
             user=self._user,
@@ -107,4 +107,4 @@ class SSHBackendFactory(SSHBase, BackendFactory):
             key_file=self._key_file,
             ssh_opts=self._ssh_opts)
 
-        return backend
+        return sut
