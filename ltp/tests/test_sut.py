@@ -3,6 +3,7 @@ Unittests for SUT package.
 """
 import os
 import pytest
+from ltp.sut import SUT
 from ltp.sut import LocalSUT
 from ltp.sut import LocalSUTFactory
 from ltp.sut import QemuSUT
@@ -26,16 +27,16 @@ class TestLocalSUT:
         tmp = tmpdir / "tmp"
         tmp.mkdir()
 
-        SUT = LocalSUT()
-        SUT.communicate()
+        sut = LocalSUT()
+        sut.communicate()
 
-        assert SUT.downloader is not None
-        assert SUT.runner is not None
+        assert sut.downloader is not None
+        assert sut.runner is not None
 
         target_file = tmpdir / "runtest" / "dirsuite0"
         local_file = tmpdir / "tmp" / "dirsuite0"
 
-        SUT.downloader.fetch_file(target_file, local_file)
+        sut.downloader.fetch_file(target_file, local_file)
         metadata = RuntestMetadata()
         suite = metadata.read_suite(local_file)
 
@@ -43,7 +44,7 @@ class TestLocalSUT:
 
         for test in suite.tests:
             cmd = f"{test.command} {' '.join(test.arguments)}"
-            result = SUT.runner.run_cmd(
+            result = sut.runner.run_cmd(
                 cmd,
                 timeout=10,
                 cwd=str(tmpdir),
@@ -57,9 +58,9 @@ class TestLocalSUT:
         Test LocalSUTFactory create() method with good arguments..
         """
         factory = LocalSUTFactory()
-        SUT = factory.create()
+        sut = factory.create()
 
-        assert isinstance(SUT, SUT)
+        assert isinstance(sut, SUT)
 
 
 @pytest.mark.skipif(TEST_QEMU_IMAGE is None, reason="TEST_QEMU_IMAGE is not defined")
@@ -77,26 +78,26 @@ class TestQemuSUT:
         Test communicate method and use runner object to execute
         commands on target.
         """
-        SUT = QemuSUT(
+        sut = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             serial=serial)
 
         try:
-            SUT.communicate()
+            sut.communicate()
 
-            assert SUT.runner is not None
+            assert sut.runner is not None
 
             for _ in range(0, 100):
-                ret = SUT.runner.run_cmd("echo 'hello world'", 1)
+                ret = sut.runner.run_cmd("echo 'hello world'", 1)
                 assert 'hello world\n' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
                 assert ret["timeout"] == 1
                 assert ret["command"] == "echo 'hello world'"
         finally:
-            SUT.stop()
+            sut.stop()
 
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
     def test_communicate_downloader(self, tmpdir, image, password, serial):
@@ -104,17 +105,17 @@ class TestQemuSUT:
         Test communicate method and use downloader object to download
         files from target to host.
         """
-        SUT = QemuSUT(
+        sut = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             serial=serial)
 
         try:
-            SUT.communicate()
+            sut.communicate()
 
-            assert SUT.runner is not None
-            assert SUT.downloader is not None
+            assert sut.runner is not None
+            assert sut.downloader is not None
 
             for i in range(0, 100):
                 target_path = f"/root/myfile{i}"
@@ -122,16 +123,16 @@ class TestQemuSUT:
                 message = f"hello world{i}"
 
                 # create file on target_path
-                ret = SUT.runner.run_cmd(
+                ret = sut.runner.run_cmd(
                     f"echo '{message}' > {target_path}", 1)
                 assert ret["returncode"] == 0
 
                 # download file in local_path
-                SUT.downloader.fetch_file(target_path, local_path)
+                sut.downloader.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}\n"
         finally:
-            SUT.stop()
+            sut.stop()
 
     def test_communicate_image_overlay(self, tmpdir, image, password):
         """
@@ -139,16 +140,16 @@ class TestQemuSUT:
         """
         img_overlay = tmpdir / "image_overlay.qcow2"
 
-        SUT = QemuSUT(
+        sut = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             image_overlay=img_overlay)
 
         try:
-            SUT.communicate()
+            sut.communicate()
         finally:
-            SUT.stop()
+            sut.stop()
 
         assert os.path.isfile(img_overlay)
 
@@ -159,19 +160,19 @@ class TestQemuSUT:
         myfile = tmpdir / "myfile"
         myfile.write("")
 
-        SUT = QemuSUT(
+        sut = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             virtfs=str(tmpdir))
 
         try:
-            SUT.communicate()
+            sut.communicate()
 
-            ret = SUT.runner.run_cmd(f"test -f /mnt/myfile", 1)
+            ret = sut.runner.run_cmd(f"test -f /mnt/myfile", 1)
             assert ret["returncode"] == 0
         finally:
-            SUT.stop()
+            sut.stop()
 
 
 class TestSSHSUT:
@@ -204,26 +205,26 @@ class TestSSHSUT:
         """
         Test runner after communicate.
         """
-        SUT = SSHSUT(
+        sut = SSHSUT(
             host=config.hostname,
             port=config.port,
             user=config.user,
             key_file=config.user_key)
 
         try:
-            SUT.communicate()
+            sut.communicate()
 
-            assert SUT.runner is not None
+            assert sut.runner is not None
 
             for _ in range(0, 20):
-                ret = SUT.runner.run_cmd("echo 'hello world'", 1)
+                ret = sut.runner.run_cmd("echo 'hello world'", 1)
                 assert 'hello world\n' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
                 assert ret["timeout"] == 1
                 assert ret["command"] == "echo 'hello world'"
         finally:
-            SUT.stop()
+            sut.stop()
 
     @pytest.mark.usefixtures("ssh_server")
     def test_communicate_downloader(self, tmpdir, config):
@@ -232,17 +233,17 @@ class TestSSHSUT:
         """
         target_folder = tmpdir.mkdir("target")
 
-        SUT = SSHSUT(
+        sut = SSHSUT(
             host=config.hostname,
             port=config.port,
             user=config.user,
             key_file=config.user_key)
 
         try:
-            SUT.communicate()
+            sut.communicate()
 
-            assert SUT.runner is not None
-            assert SUT.downloader is not None
+            assert sut.runner is not None
+            assert sut.downloader is not None
 
             for i in range(0, 20):
                 target_path = f"/{str(target_folder)}/myfile{i}"
@@ -254,11 +255,11 @@ class TestSSHSUT:
                 local_path = str(tmpdir / f"myfile{i}")
 
                 # download file in local_path
-                SUT.downloader.fetch_file(target_path, local_path)
+                sut.downloader.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}"
         finally:
-            SUT.stop()
+            sut.stop()
 
     def test_factory(self, config):
         """
@@ -270,6 +271,6 @@ class TestSSHSUT:
             user=config.user,
             key_file=config.user_key)
 
-        SUT = factory.create()
+        sut = factory.create()
 
-        assert isinstance(SUT, SUT)
+        assert isinstance(sut, SUT)
