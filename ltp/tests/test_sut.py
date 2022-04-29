@@ -3,7 +3,6 @@ Unittests for SUT package.
 """
 import os
 import pytest
-from ltp.sut import SUT
 from ltp.sut import LocalSUT
 from ltp.sut import LocalSUTFactory
 from ltp.sut import QemuSUT
