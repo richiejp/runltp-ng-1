@@ -117,6 +117,11 @@ class SSH(SSHBase):
         if not self._client:
             raise SSHError("paramiko package is not installed")
 
+        if self._client.get_transport():
+            if self._client.get_transport().is_active():
+                self._logger.info("Connection is already up")
+                return
+
         try:
             self._logger.info("Loading system keys")
             self._client.load_system_host_keys()
@@ -204,6 +209,8 @@ class SSH(SSHBase):
         stdout_str = ""
 
         try:
+            self.connect()
+
             cmd = ""
             if cwd:
                 cmd = f"cd {cwd} && "
@@ -277,6 +284,8 @@ class SSH(SSHBase):
         self._logger.info("Transfer file: %s -> %s", target_path, local_path)
 
         try:
+            self.connect()
+
             with SCPClient(self._client.get_transport()) as scp:
                 try:
                     scp.get(target_path, local_path=local_path)
