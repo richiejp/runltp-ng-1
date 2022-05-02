@@ -9,8 +9,8 @@ import os
 import time
 import logging
 import socket
-from ltp.channel import Channel
-from ltp.channel import ChannelError
+from .base import Channel
+from .base import ChannelError
 
 try:
     from paramiko import SSHClient
