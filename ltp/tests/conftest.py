@@ -33,6 +33,7 @@ class OpenSSHServer:
 
         self._port = port
         self._proc = None
+        self._running = False
         self._thread = None
         self._stop_thread = False
 
@@ -103,6 +104,8 @@ class OpenSSHServer:
             )
 
             while self._proc.poll() is None:
+                time.sleep(0.001)
+
                 if self._stop_thread:
                     break
 
@@ -110,12 +113,18 @@ class OpenSSHServer:
                 if not line:
                     break
 
+                if "Server listening" in line:
+                    self._running = True
+
                 self._logger.info(line.rstrip())
 
         self._thread = threading.Thread(target=run_server)
         self._thread.start()
 
-        time.sleep(2)
+        start_t = time.time()
+        while not self._running:
+            time.sleep(0.01)
+            assert time.time() - start_t < 30
 
         self._logger.info("service is up to use")
 
@@ -130,7 +139,7 @@ class OpenSSHServer:
 
         self._proc.terminate()
         self._stop_thread = True
-        self._thread.join(timeout=10)
+        self._thread.join(timeout=3)
 
         self._logger.info("service stopped")
 
