@@ -30,13 +30,12 @@ class TestLocalSUT:
         sut = LocalSUT()
         sut.communicate()
 
-        assert sut.downloader is not None
-        assert sut.runner is not None
+        assert sut.channel is not None
 
         target_file = tmpdir / "runtest" / "dirsuite0"
         local_file = tmpdir / "tmp" / "dirsuite0"
 
-        sut.downloader.fetch_file(target_file, local_file)
+        sut.channel.fetch_file(target_file, local_file)
         metadata = RuntestMetadata()
         suite = metadata.read_suite(local_file)
 
@@ -44,7 +43,7 @@ class TestLocalSUT:
 
         for test in suite.tests:
             cmd = f"{test.command} {' '.join(test.arguments)}"
-            result = sut.runner.run_cmd(
+            result = sut.channel.run_cmd(
                 cmd,
                 timeout=10,
                 cwd=str(tmpdir),
@@ -73,7 +72,7 @@ class TestQemuSUT:
     """
 
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
-    def test_communicate_runner(self, tmpdir, image, password, serial):
+    def test_communicate_run_cmd(self, tmpdir, image, password, serial):
         """
         Test communicate method and use runner object to execute
         commands on target.
@@ -87,10 +86,10 @@ class TestQemuSUT:
         try:
             sut.communicate()
 
-            assert sut.runner is not None
+            assert sut.channel is not None
 
             for _ in range(0, 100):
-                ret = sut.runner.run_cmd("echo 'hello world'", 1)
+                ret = sut.channel.run_cmd("echo 'hello world'", 1)
                 assert 'hello world\n' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
@@ -100,9 +99,9 @@ class TestQemuSUT:
             sut.stop()
 
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
-    def test_communicate_downloader(self, tmpdir, image, password, serial):
+    def test_communicate_fetch_file(self, tmpdir, image, password, serial):
         """
-        Test communicate method and use downloader object to download
+        Test communicate method and use channel object to download
         files from target to host.
         """
         sut = QemuSUT(
@@ -114,8 +113,7 @@ class TestQemuSUT:
         try:
             sut.communicate()
 
-            assert sut.runner is not None
-            assert sut.downloader is not None
+            assert sut.channel is not None
 
             for i in range(0, 100):
                 target_path = f"/root/myfile{i}"
@@ -123,12 +121,12 @@ class TestQemuSUT:
                 message = f"hello world{i}"
 
                 # create file on target_path
-                ret = sut.runner.run_cmd(
+                ret = sut.channel.run_cmd(
                     f"echo '{message}' > {target_path}", 1)
                 assert ret["returncode"] == 0
 
                 # download file in local_path
-                sut.downloader.fetch_file(target_path, local_path)
+                sut.channel.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}\n"
         finally:
@@ -169,7 +167,7 @@ class TestQemuSUT:
         try:
             sut.communicate()
 
-            ret = sut.runner.run_cmd(f"test -f /mnt/myfile", 1)
+            ret = sut.channel.run_cmd(f"test -f /mnt/myfile", 1)
             assert ret["returncode"] == 0
         finally:
             sut.stop()
@@ -201,9 +199,9 @@ class TestSSHSUT:
         return Config()
 
     @pytest.mark.usefixtures("ssh_server")
-    def test_communicate_runner(self, config):
+    def test_communicate_run_cmd(self, config):
         """
-        Test runner after communicate.
+        Test channel run_cmd after communicate.
         """
         sut = SSHSUT(
             host=config.hostname,
@@ -214,10 +212,10 @@ class TestSSHSUT:
         try:
             sut.communicate()
 
-            assert sut.runner is not None
+            assert sut.channel is not None
 
             for _ in range(0, 20):
-                ret = sut.runner.run_cmd("echo 'hello world'", 1)
+                ret = sut.channel.run_cmd("echo 'hello world'", 1)
                 assert 'hello world\n' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
@@ -227,9 +225,9 @@ class TestSSHSUT:
             sut.stop()
 
     @pytest.mark.usefixtures("ssh_server")
-    def test_communicate_downloader(self, tmpdir, config):
+    def test_communicate_fetch_file(self, tmpdir, config):
         """
-        Test downloader after communicate.
+        Test channel fetch_file after communicate.
         """
         target_folder = tmpdir.mkdir("target")
 
@@ -242,8 +240,7 @@ class TestSSHSUT:
         try:
             sut.communicate()
 
-            assert sut.runner is not None
-            assert sut.downloader is not None
+            assert sut.channel is not None
 
             for i in range(0, 20):
                 target_path = f"/{str(target_folder)}/myfile{i}"
@@ -255,7 +252,7 @@ class TestSSHSUT:
                 local_path = str(tmpdir / f"myfile{i}")
 
                 # download file in local_path
-                sut.downloader.fetch_file(target_path, local_path)
+                sut.channel.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}"
         finally:

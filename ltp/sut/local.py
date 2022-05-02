@@ -5,10 +5,8 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
-from ltp.runner import Runner
-from ltp.runner import ShellRunner
-from ltp.downloader import Downloader
-from ltp.downloader import LocalDownloader
+from ltp.channel import Channel
+from ltp.channel import ShellChannel
 from .base import SUT
 from .base import SUTError
 from .base import SUTFactory
@@ -20,35 +18,27 @@ class LocalSUT(SUT):
     """
 
     def __init__(self) -> None:
-        self._downloader = None
-        self._runner = None
+        self._channel = None
 
     @property
     def name(self) -> str:
         return "host"
 
     @property
-    def downloader(self) -> Downloader:
-        return self._downloader
-
-    @property
-    def runner(self) -> Runner:
-        return self._runner
+    def channel(self) -> Channel:
+        return self._channel
 
     def communicate(self, stdout_callback: callable = None) -> None:
-        if self._downloader or self._runner:
+        if self._channel:
             raise SUTError("SUT is already running")
 
-        self._downloader = LocalDownloader()
-        self._runner = ShellRunner()
+        self._channel = ShellChannel()
 
-    def stop(self) -> None:
-        self._runner.stop()
-        self._downloader.stop()
+    def stop(self, timeout: int = 30) -> None:
+        self._channel.stop(timeout=timeout)
 
-    def force_stop(self) -> None:
-        self._runner.force_stop()
-        self._downloader.stop()
+    def force_stop(self, timeout: int = 30) -> None:
+        self._channel.force_stop(timeout=timeout)
 
 
 class LocalSUTFactory(SUTFactory):

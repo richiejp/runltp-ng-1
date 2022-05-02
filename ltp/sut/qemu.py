@@ -11,10 +11,8 @@ import shutil
 import logging
 import subprocess
 from typing import Any
-from ltp.runner import Runner
-from ltp.runner import SerialRunner
-from ltp.downloader import Downloader
-from ltp.downloader import TransportDownloader
+from ltp.channel import SerialChannel
+from ltp.channel.base import Channel
 from .base import SUT
 from .base import SUTError
 from .base import SUTFactory
@@ -43,8 +41,7 @@ class QemuSUT(SUT):
         self._serial = kwargs.get("serial", "isa")
         self._logger = logging.getLogger("ltp.sut.qemu")
         self._proc = None
-        self._runner = None
-        self._downloader = None
+        self._channel = None
 
         system = kwargs.get("system", "x86_64")
         self._qemu_cmd = f"qemu-system-{system}"
@@ -110,21 +107,16 @@ class QemuSUT(SUT):
         return "qemu"
 
     @property
-    def runner(self) -> Runner:
-        return self._runner
+    def channel(self) -> Channel:
+        return self._channel
 
-    @property
-    def downloader(self) -> Downloader:
-        return self._downloader
-
-    def stop(self) -> None:
+    def stop(self, timeout: int = 30) -> None:
         if not self._proc:
             return
 
         self._logger.info("Shutting down virtual machine")
 
-        self._runner.stop()
-        self._downloader.stop()
+        self._channel.stop()
 
         self._proc.stdin.write("\n")
         self._proc.stdin.write("poweroff")
@@ -138,23 +130,31 @@ class QemuSUT(SUT):
             # BrokenPipeError that has to be ignored in this case
             pass
 
+        secs = max(timeout, 0)
         start_t = time.time()
+
         while self._proc.poll() is None:
-            time.sleep(0.2)
-            if time.time() - start_t >= 30:
+            time.sleep(0.05)
+            if time.time() - start_t > secs:
                 raise SUTError("Virtual machine timed out during poweroff")
 
         self._logger.info("Virtual machine stopped")
 
-    def force_stop(self) -> None:
+    def force_stop(self, timeout: int = 30) -> None:
         if not self._proc:
             return
 
         self._logger.info("Killing virtual machine")
-
         self._proc.kill()
-
         self._logger.info("Virtual machine killed")
+
+        secs = max(timeout, 0)
+        start_t = time.time()
+
+        while self._proc.poll() is None:
+            time.sleep(0.05)
+            if time.time() - start_t > secs:
+                raise SUTError("Virtual machine timed out during kill")
 
     # pylint: disable=too-many-statements
     def communicate(self, stdout_callback: callable = None) -> None:
@@ -247,17 +247,17 @@ class QemuSUT(SUT):
 
         self._logger.info("Creating communication objects")
 
-        self._runner = SerialRunner(self._proc.stdout, self._proc.stdin)
-        self._downloader = TransportDownloader(
-            self._runner,
-            transport_dev,
-            transport_file)
+        self._channel = SerialChannel(
+            stdin=self._proc.stdin,
+            stdout=self._proc.stdout,
+            transport_dev=transport_dev,
+            transport_path=transport_file)
 
-        self._runner.run_cmd("export PS1=''", 1)
+        self._channel.run_cmd("export PS1=''", 1)
 
         # mount virtual FS
         if self._virtfs:
-            self._runner.run_cmd("mount -t 9p -o trans=virtio host0 /mnt", 10)
+            self._channel.run_cmd("mount -t 9p -o trans=virtio host0 /mnt", 10)
 
         self._logger.info("Virtual machine started")
 

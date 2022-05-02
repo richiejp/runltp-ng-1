@@ -7,9 +7,9 @@
 """
 import os
 from ltp import LTPException
-from ltp.runner import Runner
 from ltp.sut import SUT
 from ltp.sut import SUTFactory
+from ltp.channel import Channel
 from ltp.metadata import Suite
 from ltp.metadata import Test
 from ltp.metadata import RuntestMetadata
@@ -58,14 +58,14 @@ class SerialDispatcher(Dispatcher):
         if not self._events:
             raise ValueError("No events are given")
 
-    def _read_available_suites(self, runner: Runner) -> list:
+    def _read_available_suites(self, channel: Channel) -> list:
         """
         Read the available testing suites by looking at runtest folder using
         ls command.
         """
         runtest_dir = os.path.join(self._ltpdir, "runtest")
 
-        ret = runner.run_cmd(f"ls -1 {runtest_dir}", 2)
+        ret = channel.run_cmd(f"ls -1 {runtest_dir}", 2)
 
         retcode = ret["returncode"]
         if retcode != 0:
@@ -77,11 +77,11 @@ class SerialDispatcher(Dispatcher):
         return suites
 
     @staticmethod
-    def _read_sut_info(runner: Runner, cmd) -> str:
+    def _read_sut_info(channel: Channel, cmd) -> str:
         """
-        Read SUT information using command runner.
+        Read SUT information using command channel.
         """
-        ret = runner.run_cmd(cmd, timeout=10)
+        ret = channel.run_cmd(cmd, timeout=10)
         if ret["returncode"] != 0:
             raise DispatcherError(f"Can't read information from SUT: {cmd}")
 
@@ -114,7 +114,7 @@ class SerialDispatcher(Dispatcher):
             self._events.test_stdout_line(test, line)
 
         # TODO: set specific timeout for each test?
-        test_data = sut.runner.run_cmd(
+        test_data = sut.channel.run_cmd(
             cmd,
             timeout=3600,
             cwd=self._ltpdir,
@@ -149,11 +149,11 @@ class SerialDispatcher(Dispatcher):
 
             # execute tests
             tests_results = []
-            sut.runner.start()
+            sut.channel.start()
 
             for test in suite.tests:
                 if self._stop:
-                    sut.runner.stop()
+                    sut.channel.stop()
                     return None
 
                 results = self._run_test(sut, test, env)
@@ -164,16 +164,16 @@ class SerialDispatcher(Dispatcher):
 
             # create suite results
             distro_str = self._read_sut_info(
-                sut.runner,
+                sut.channel,
                 ". /etc/os-release; echo \"$ID\"")
             distro_ver_str = self._read_sut_info(
-                sut.runner,
+                sut.channel,
                 ". /etc/os-release; echo \"$VERSION_ID\"")
             kernel_str = self._read_sut_info(
-                sut.runner,
+                sut.channel,
                 "uname -s -r -v")
             arch_str = self._read_sut_info(
-                sut.runner,
+                sut.channel,
                 "uname -m")
 
             suite_results = SuiteResults(
@@ -185,7 +185,7 @@ class SerialDispatcher(Dispatcher):
                 arch=arch_str)
         finally:
             # read kernel messages for the current SUT instance
-            dmesg_stdout = sut.runner.run_cmd("dmesg", timeout=10)
+            dmesg_stdout = sut.channel.run_cmd("dmesg", timeout=10)
             command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
             with open(command, "w", encoding="utf-8") as fdmesg:
                 fdmesg.write(dmesg_stdout["stdout"])
@@ -228,7 +228,7 @@ class SerialDispatcher(Dispatcher):
 
                 sut.communicate(stdout_callback=_mystdout_line)
 
-                avail_suites = self._read_available_suites(sut.runner)
+                avail_suites = self._read_available_suites(sut.channel)
                 if suite_name not in avail_suites:
                     raise DispatcherError(
                         f"'{suite_name}' suite is not available. "
@@ -245,7 +245,7 @@ class SerialDispatcher(Dispatcher):
                     target,
                     local)
 
-                sut.downloader.fetch_file(target, local)
+                sut.channel.fetch_file(target, local)
 
                 self._events.suite_download_completed(
                     suite_name,

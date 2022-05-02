@@ -6,8 +6,7 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 from ltp import LTPException
-from ltp.runner import Runner
-from ltp.downloader import Downloader
+from ltp.channel import Channel
 
 
 class SUTError(LTPException):
@@ -30,18 +29,10 @@ class SUT:
         raise NotImplementedError()
 
     @property
-    def runner(self) -> Runner:
+    def channel(self) -> Channel:
         """
-        Object used to execute commands on target. It's None if communicate()
-        has not been called yet.
-        """
-        raise NotImplementedError()
-
-    @property
-    def downloader(self) -> Downloader:
-        """
-        Object used to download files from target. It's None if communicate()
-        has not been called yet.
+        Object used to communicate with target. It's None if communicate() has
+        not been called yet.
         """
         raise NotImplementedError()
 
@@ -55,15 +46,19 @@ class SUT:
         """
         raise NotImplementedError()
 
-    def stop(self) -> None:
+    def stop(self, timeout: int = 30) -> None:
         """
         Stop the current SUT session.
+        :param timeout: timeout to complete in seconds
+        :type timeout: int
         """
         raise NotImplementedError()
 
-    def force_stop(self) -> None:
+    def force_stop(self, timeout: int = 30) -> None:
         """
         Force stopping the current SUT session.
+        :param timeout: timeout to complete in seconds
+        :type timeout: int
         """
         raise NotImplementedError()
 
