@@ -9,23 +9,14 @@ Quickstart
 
 Some basic commands are the following:
 
-    # show testing suites on host
-    runltp-ng host --list
-
     # run syscalls and dio testing suites on host
-    runltp-ng host -s syscalls dio
+    runltp-ng --run-suite syscalls dio
 
-    # show packages to build LTP on the current system
-    runltp-ng show-deps --build
+    # run syscalls and dio testing suites in qemu VM
+    runltp-ng --sut=qemu:image=folder/image.qcow2 --run-suite syscalls dio
 
-    # show testing suites on host using different LTP installation folder
-    LTPROOT=/opt/alternative_ltp runltp-ng host --list
-
-    # run syscalls and dio testing suites on qemu VM
-    runltp-ng qemu -i folder/image.qcow2 -s syscalls dio
-
-    # run syscalls and dio testing suites on target via SSH
-    runltp-ng ssh -a 10.0.10.1 -k privkey_rsa -s syscalls dio
+    # run syscalls and dio testing suites via SSH
+    runltp-ng --sut=ssh:host=10.0.10.1:key_file=privkey_rsa --run-suite syscalls dio
 
 Please use `--help` to check all available options for the commands above.
 
@@ -59,31 +50,6 @@ Installation via distro packages
 Install `paramiko` and `scp` packages in your distribution, then run:
 
     ./runltp-ng
-
-Running tests
--------------
-
-LTP tests can be run using different subcommands.
-
-- `host`: execute LTP tests in the current system
-- `qemu`: execute LTP tests in a qemu VM
-- `ssh`: execute LTP tests on target via SSH protocol
-
-> **_NOTE:_**  In order to execute tests inside a qemu instance, be sure to
-> have qemu with kvm support installed.
-
-Install LTP
------------
-
-The LTP installation can be done using the `runltp-ng install` command.
-The following Linux distro are supported:
-
-- openSUSE
-- RHEL
-- Debian
-- Ubuntu
-- Fedora
-- Alpine
 
 Development
 ===========
