@@ -135,6 +135,6 @@ status is the overall test result.
 
 See `waitid`.
 
-table_id:  positive fixint
+`table_id`:  positive fixint
 `si_status`: uint 8
 `si_code`: uint 8
