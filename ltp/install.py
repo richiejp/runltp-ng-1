@@ -146,14 +146,31 @@ class Installer:
             self,
             url: str,
             repo_dir: str,
+            branch: str = "master",
+            commit: str = None,
             stdout_callback: callable = None) -> None:
         """
         Run LTP installation from Git repository.
         """
+        args = ""
+        if branch == "master" and not commit:
+            args = "--depth=1"
+
         self._logger.info("Cloning repository..")
         self._run_cmd(
-            f"git clone --depth=1 {url} {repo_dir}",
+            f"git clone {args} {url} {repo_dir}",
             stdout_callback=stdout_callback)
+
+        if branch != "master":
+            self._run_cmd(
+                f"git -C {repo_dir} checkout {branch}",
+                stdout_callback=stdout_callback)
+
+        if commit:
+            self._run_cmd(
+                f"git -C {repo_dir} checkout {commit}",
+                stdout_callback=stdout_callback)
+
         self._logger.info("Cloning completed")
 
     def install_from_src(
@@ -214,11 +231,14 @@ class Installer:
 
         self._logger.info("Installation completed")
 
+    # pylint: disable=too-many-arguments
     def install(self,
                 m32_support: bool,
                 url: str,
                 repo_dir: str,
                 install_dir: str,
+                branch: str = "master",
+                commit: str = None,
                 stdout_callback: callable = None) -> None:
         """
         Run LTP installation from Git repository.
@@ -230,6 +250,10 @@ class Installer:
         :type repo_dir: str
         :param install_dir: LTP installation directory.
         :type install_dir: str
+        :param branch: name of the git branch.
+        :type branch: str
+        :param commit: SHA of the git commit.
+        :type commit: str
         :param stdout_callback: callback called all the times a new line comes
             arrives in the stdout
         :type stdout_callback: callable
@@ -250,6 +274,8 @@ class Installer:
         self.clone_repo(
             url,
             repo_dir,
+            branch=branch,
+            commit=commit,
             stdout_callback=stdout_callback)
         self.install_from_src(
             repo_dir,
