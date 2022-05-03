@@ -115,18 +115,6 @@ Sent from LTX to the host to log child process output.
 
 `[4, table_id, text]`
 
-### Error
-
-Error message sent by LTX to the host. The host should assume that any
-error message is fatal. LTX may continue to send and receive messages
-after an error. However the SUT should be returned to a known good
-state before starting any new tests.
-
-`table_id`: positive fixint | nil
-`text`: fixstr | str 8
-
-`[5, table_id, text]`
-
 ### Result
 
 Sent by LTX to the host to indicate the exit status of a process or
@@ -136,5 +124,7 @@ status is the overall test result.
 See `waitid`.
 
 `table_id`:  positive fixint
-`si_status`: uint 8
 `si_code`: uint 8
+`si_status`: uint 8
+
+`[5, table_id, si_code, si_status]`

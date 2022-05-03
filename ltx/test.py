@@ -1,4 +1,4 @@
-#!/usr/bin/pytest-3.9 --full-trace
+#!/usr/bin/pytest-3.9
 
 import time
 import pytest
@@ -27,7 +27,7 @@ def expect_exact(bs):
             continue
 
         raise ValueError(
-            f"Expected {hex(bs[i])}, but got {hex(buf[i])} at {i} in '{buf.hex(' ')}'"
+            f"Expected {hex(bs[i])}, but got {hex(buf[i])} at {i} in '{buf.hex(' ')}' / {buf}"
         )
 
     buf = buf[l:]
@@ -117,6 +117,8 @@ class TestLtx:
             expect_exact(pong_eg[:-8])
             expect_n_bytes(8)
 
-        #expect_n_bytes(2040 * (len(ping_eg) + len(pong_eg)))
+    def test_exec(self):
+        send(packb([3, 0, "/usr/bin/uname"]))
+        expect_exact(packb([4, 0, "Linux\n"]))
+        expect_exact(packb([5, 0, 1, 0]))
         
-

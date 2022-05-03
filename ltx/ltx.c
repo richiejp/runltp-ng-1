@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <poll.h>
+#include <signal.h>
 #include <time.h>
 #include <limits.h>
 
@@ -19,6 +20,7 @@
 #include <sys/wait.h>
 #include <sys/uio.h>
 #include <sys/epoll.h>
+#include <sys/signalfd.h>
 
 #define VERSION "0.0.1-dev"
 
@@ -69,24 +71,42 @@ enum ltx_msg_types {
 	ltx_msg_max,
 };
 
+enum ltx_ev_source_type {
+	ltx_ev_io,
+	ltx_ev_child_io,
+	ltx_ev_signal
+};
+
+struct ltx_ev_source {
+	enum ltx_ev_source_type type;
+	uint8_t table_id;
+	int fd;
+	pid_t pid;
+};
+
 static const uint8_t ltx_nil = 0xc0;
 
-static const int in_fd = STDIN_FILENO;
+static struct ltx_ev_source ltx_in = {
+	.type = ltx_ev_io,
+	.fd = STDIN_FILENO,
+};
 static struct ltx_buf in_buf;
-static const int out_fd = STDOUT_FILENO;
+
+static struct ltx_ev_source ltx_out = {
+	.type = ltx_ev_io,
+	.fd = STDOUT_FILENO,
+};
 static int out_fd_blocked;
 static struct ltx_buf out_buf;
+
+static struct ltx_ev_source ltx_sig = {
+	.type = ltx_ev_signal
+};
 static int ep_fd;
 static pid_t ltx_pid;
 
-static const int child_fd_off = 100;
-static pid_t childs[0x7f];
-
-__attribute__((const, warn_unused_result))
-static uint8_t ltx_table_id(const int fd)
-{
-	return fd - child_fd_off;
-}
+static struct ltx_ev_source childs[0x7f];
+static uint32_t child_pids[0x7f];
 
 __attribute__((const, warn_unused_result))
 static size_t ltx_min_sz(const size_t a, const size_t b)
@@ -199,7 +219,7 @@ static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 	ltx_log_head(&msg, ltx_nil, 32, msg.used - 32);
 
 	while (msg.used) {
-		res = write(out_fd, ltx_buf_start(&msg), msg.used);
+		res = write(ltx_out.fd, ltx_buf_start(&msg), msg.used);
 		if (res < 0)
 			break;
 
@@ -271,21 +291,21 @@ static void ltx_out_q(const uint8_t *const data, const size_t len)
 	out_buf.used += len;
 }
 
-static void ltx_epoll_add(const int fd, const uint32_t events)
+static void ltx_epoll_add(struct ltx_ev_source *ev_src, const uint32_t events)
 {
 	struct epoll_event ev = {
 		.events = events,
-		.data = (epoll_data_t){ .fd = fd },
+		.data = (epoll_data_t){ .ptr = ev_src },
 	};
 
-	LTX_EXP_0(epoll_ctl(ep_fd, EPOLL_CTL_ADD, fd, &ev));
+	LTX_EXP_0(epoll_ctl(ep_fd, EPOLL_CTL_ADD, ev_src->fd, &ev));
 }
 
 static void fill_read_buf(void)
 {
 	ltx_assert(ltx_buf_avail(&in_buf) > 0, "read buffer full");
 
-	const int ilen = LTX_EXP_POS(read(in_fd,
+	const int ilen = LTX_EXP_POS(read(ltx_in.fd,
 					  ltx_buf_end(&in_buf),
 					  ltx_buf_avail(&in_buf)));
 	in_buf.used += ilen;
@@ -294,7 +314,7 @@ static void fill_read_buf(void)
 static void drain_write_buf(void)
 {
 	while (out_buf.used) {
-		const int olen = write(out_fd, ltx_buf_start(&out_buf), out_buf.used);
+		const int olen = write(ltx_out.fd, ltx_buf_start(&out_buf), out_buf.used);
 
 		if (olen < 0 && errno == EAGAIN) {
 			out_fd_blocked = 1;
@@ -327,7 +347,7 @@ static int process_exec_msg(const uint8_t args_n,
 	const uint8_t *path;
 	char cpath[256];
 	pid_t child;
-	int pipefd[2], child_out;
+	int pipefd[2];
 
 	if (c == len)
 		return 0;
@@ -366,20 +386,26 @@ static int process_exec_msg(const uint8_t args_n,
 			   data[1]);
 	}
 
+	dprintf(STDERR_FILENO, "Exec: c=%zu, path_len=%u, len=%zu\n", c, path_len, len);
 	c += path_len;
-	if (c >= len)
+	if (c > len)
 		return 0;
+
+	ltx_out_q((uint8_t []){ ltx_fixarr(args_n + 1), ltx_msg_exec }, 2);
+	ltx_out_q(data, len);
 
 	ltx_assert(args_n == 2, "Exec: argsv not implemented");
 
 	LTX_EXP_0(pipe2(pipefd, O_CLOEXEC));
-	child_out = LTX_EXP_FD(dup2(pipefd[0], child_fd_off + table_id));
-	ltx_epoll_add(child_out, EPOLLOUT);
+	childs[table_id].fd = pipefd[0];
+	ltx_epoll_add(childs + table_id, EPOLLOUT);
 	child = LTX_EXP_POS(fork());
 
 	if (child) {
 		close(pipefd[1]);
-		childs[table_id] = child;
+		dprintf(STDERR_FILENO, "Started %d\n", child);
+		childs[table_id].pid = child;
+		child_pids[table_id] = child;
 		return c;
 	}
 
@@ -388,7 +414,7 @@ static int process_exec_msg(const uint8_t args_n,
 
 	memcpy(cpath, path, path_len);
 	cpath[path_len] = '\0';
-	LTX_EXP_0(execv(cpath, (char *const[]){}));
+	LTX_EXP_0(execv(cpath, (char *const[]){ cpath, NULL }));
 	__builtin_unreachable();
 }
 
@@ -425,11 +451,14 @@ static void process_msgs(void)
 				   "Exec: (msg_arr_len = %u) < 3",
 				   msg_arr_len);
 
+			dprintf(STDERR_FILENO, "start exec msg\n");
 			ret = process_exec_msg(msg_arr_len - 1,
 					       data + len,
 					       in_buf.used - len);
-			if (!ret)
+			if (!ret) {
+				len = 0;
 				goto out;
+			}
 
 			len += ret;
 			break;
@@ -457,10 +486,12 @@ out:
 
 static int process_event(const struct epoll_event *const ev)
 {
-	siginfo_t infop;
-	size_t len;
+	struct ltx_ev_source *ev_src = ev->data.ptr;
+	struct signalfd_siginfo si[0x7f];
+	ssize_t len, sig_n;
+	uint8_t table_id;
 
-	if (ev->data.fd == in_fd || ev->data.fd == out_fd) {
+	if (ev_src->type == ltx_ev_io) {
 		if (ev->events & EPOLLIN)
 			fill_read_buf();
 
@@ -473,22 +504,43 @@ static int process_event(const struct epoll_event *const ev)
 		return 0;
 	}
 
-	if (ev->events & EPOLLOUT) {
+	if (ev_src->type == ltx_ev_signal) {
+		len = LTX_EXP_POS(read(ev_src->fd, si, sizeof(si[0]) * 0x7f));
+		sig_n = len / sizeof(si[0]);
+
+		ltx_assert(sig_n * (ssize_t)sizeof(si[0]) == len,
+			   "signalfd reads not atomic?");
+
+		for (int i = 0; i < sig_n; i++) {
+			for (table_id = 0; table_id < 0x7f; table_id++) {
+				if (child_pids[table_id] == si[i].ssi_pid)
+					break;
+			}
+
+			ltx_assert(table_id < 0x7f,
+				   "PID not found: %d", si[i].ssi_pid);
+
+			ltx_out_q((uint8_t[]){
+					ltx_fixarr(4),
+					ltx_msg_result,
+					table_id,
+					(uint8_t)si[i].ssi_code,
+					(uint8_t)si[i].ssi_status
+			}, 5);
+		}
+	} else if (ev->events & EPOLLHUP || ev->events & EPOLLOUT) {
 		out_buf.used += 32;
-		len = LTX_EXP_POS(read(ev->data.fd,
+		len = LTX_EXP_POS(read(ev_src->fd,
 				       ltx_buf_end(&out_buf),
 				       ltx_min_sz(1024, ltx_buf_avail(&out_buf))));
-		ltx_log_head(&out_buf, ev->data.fd, 32, len);
-	}
 
-	if (ev->events & EPOLLHUP) {
-		LTX_EXP_POS(waitid(P_PID, childs[ltx_table_id(ev->data.fd)], &infop, 0));
-
-		ltx_out_q((uint8_t[]){ ltx_fixarr(3),
-					ltx_msg_result,
-					(uint8_t)infop.si_status,
-					(uint8_t)infop.si_code
-			}, 4);
+		if (len) {
+			out_buf.used += len;
+			ltx_log_head(&out_buf, ev_src->table_id, 32, len);
+		} else {
+			out_buf.used -= 32;
+			close(ev_src->fd);
+		}
 	}
 
 	if (out_buf.used > BUFSIZ / 4)
@@ -502,13 +554,25 @@ static void event_loop(void)
 	const int maxevents = 128;
 	int stop = 0;
 	struct epoll_event events[maxevents];
+	sigset_t mask;
 
-	fcntl(out_fd, F_SETFL, O_NONBLOCK);
+	for (int i = 0; i < 0x7f; i++) {
+		childs[i].type = ltx_ev_child_io;
+		childs[i].table_id = i;
+	}
+
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGCHLD);
+	LTX_EXP_0(sigprocmask(SIG_BLOCK, &mask, NULL));
+	ltx_sig.fd = LTX_EXP_FD(signalfd(-1, &mask, SFD_CLOEXEC));
+
+	fcntl(ltx_out.fd, F_SETFL, O_NONBLOCK);
 
 	ep_fd = LTX_EXP_FD(epoll_create1(EPOLL_CLOEXEC));
 
-	ltx_epoll_add(in_fd, EPOLLIN);
-	ltx_epoll_add(out_fd, EPOLLOUT | EPOLLET);
+	ltx_epoll_add(&ltx_in, EPOLLIN);
+	ltx_epoll_add(&ltx_out, EPOLLOUT | EPOLLET);
+	ltx_epoll_add(&ltx_sig, EPOLLIN);
 
 	while (!stop) {
 		const int eventsn =
