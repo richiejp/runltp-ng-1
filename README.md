@@ -13,35 +13,34 @@ Some basic commands are the following:
     runltp-ng --run-suite syscalls dio
 
     # run syscalls and dio testing suites in qemu VM
-    runltp-ng --sut=qemu:image=folder/image.qcow2 --run-suite syscalls dio
+    runltp-ng --sut=qemu:image=folder/image.qcow2 \
+        --run-suite syscalls dio
 
     # run syscalls and dio testing suites via SSH
-    runltp-ng --sut=ssh:host=10.0.10.1:key_file=privkey_rsa --run-suite syscalls dio
+    runltp-ng --sut=ssh:host=10.0.10.1:key_file=folder/privkey_rsa \
+        --run-suite syscalls dio
 
-Also `--install` option can be used to install a fresh version of the LTP suite
-just before executing suites on SUT:
+LTP can be installed using `--install` option as following:
 
-    # install LTP using master branch, run syscalls and dio testing suites in qemu VM
-    runltp-ng --install=master --sut=qemu:image=folder/image.qcow2 --run-suite syscalls dio
+    runltp-ng --install=master:commit=0f67c9851a9043d0ad68cef4648d103ba7908480
 
-And `--install` option can be used also by itself to install LTP without
-executing any suite:
+And it can be mixed up with `--sut` or `--run-suite` to install LTP
+before testing:
 
-    # install LTP using master branch
-    runltp-ng --install=master
+    runltp-ng --install=master --sut=qemu:image=folder/image.qcow2 \
+        --run-suite syscalls dio
 
-    # install LTP in Qemu using master branch
-    runltp-ng --install=master --sut=qemu:image=folder/image.qcow2
+It's possible to run a single command before running testing suites using
+`--run-cmd` option as following:
 
-You can also run a single command.
+    runltp-ng --run-cmd=/mnt/testcases/kernel/systemcalls/bpf/bpf_prog02 \
+        --sut=qemu:image=folder/image.qcow2 \
+        --run-suite syscalls dio
 
-    runltp-ng --cmd=/mnt/testcases/kernel/systemcalls/bpf/bpf_prog02 \
-        --sut=qemu:image=folder/image.qcow2 --run-suite syscalls dio
+It can be used also to run a single command without running testing suites:
 
-The option `--run-cmd` just specifies some text to pass to the shell.
-If used with `--run-suite` then it is executed before the tests.
-
-Please use `--help` to check all available options for the commands above.
+    runltp-ng --run-cmd=/mnt/testcases/kernel/systemcalls/bpf/bpf_prog02 \
+        --sut=qemu:image=folder/image.qcow2
 
 The following environment variables are supported and they can be used to
 customize the runner behavior:
@@ -54,6 +53,56 @@ Every session has a temporary directory which can be found in
 `/<TMPDIR>/runltp-of<username>`. Inside this folder there's a symlink
 called `latest`, pointing to the latest session's temporary directory, and the
 application will rotate over 5 sessions.
+
+Options parameters
+==================
+
+Each option has parameters which can be used to customize running behaviour.
+Their syntax is `--option=param0:key1=param1:key2=param2`.
+
+Install option
+--------------
+
+The `--install` option has branch name as the first parameter and then it
+uses the following parameters to customize installation:
+- **commit**: commit hash
+- **repo**: repository location
+- **m32**: uses 32bit dependences. It can be 0 or 1
+- **install_dir**: LTP install directory
+
+For example, `--install=master:commit=0f67c9851a9043d0ad68cef4648d103ba7908480`.
+
+SUT option
+----------
+
+The `--sut` option has different parameters according with the first parameter
+that is used. That's the name of the SUT we are going to use. Currently,
+**host**, **qemu** and **ssh** are supported and they have the following
+parameters:
+
+**qemu** parameters:
+- **image**: qcow2 image location
+- **image_overlay**: copy image location
+- **password**: root password (default: root)
+- **system**: system architecture (default: x86_64)
+- **ram**: RAM of the VM with qemu syntax (default: 2G)
+- **smp**: number of CPUs (default: 2)
+- **serial**: type of serial communication: isa or virtio (default: isa)
+
+For example, `--sut=qemu:image=image.qcow2:smp=12:ram=10G:serial=virtio`.
+
+**ssh** parameters:
+- **host**: IP address or hostname of the SUT (default: localhost)
+- **port**: TCP port of the service (default: 22)
+- **user**: name of the user (default: root)
+- **password**: user's password
+- **timeout**: connection timeout is seconds (default: 10)
+- **key_file**: private key location
+
+For example, `--sut=ssh:host=10.0.10.1:port=2222:user=gigi:password=1234`.
+
+Installation
+============
 
 Installation via setuptools
 ---------------------------
