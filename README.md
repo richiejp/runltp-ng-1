@@ -33,6 +33,14 @@ executing any suite:
     # install LTP in Qemu using master branch
     runltp-ng --install=master --sut=qemu:image=folder/image.qcow2
 
+You can also run a single command.
+
+    runltp-ng --cmd=/mnt/testcases/kernel/systemcalls/bpf/bpf_prog02 \
+        --sut=qemu:image=folder/image.qcow2 --run-suite syscalls dio
+
+The option `--run-cmd` just specifies some text to pass to the shell.
+If used with `--run-suite` then it is executed before the tests.
+
 Please use `--help` to check all available options for the commands above.
 
 The following environment variables are supported and they can be used to
