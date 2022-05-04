@@ -61,15 +61,3 @@ class SUT:
         :type timeout: int
         """
         raise NotImplementedError()
-
-
-class SUTFactory:
-    """
-    Create Factory implementations instances.
-    """
-
-    def create(self) -> SUT:
-        """
-        Create a new SUT object.
-        """
-        raise NotImplementedError()

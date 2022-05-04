@@ -11,7 +11,6 @@ from ltp.channel import SSHBase
 from ltp.channel import SSHChannel
 from .base import SUT
 from .base import SUTError
-from .base import SUTFactory
 
 
 class SSHSUT(SSHBase, SUT):
@@ -47,21 +46,3 @@ class SSHSUT(SSHBase, SUT):
 
     def force_stop(self, timeout: int = 30) -> None:
         self._channel.force_stop(timeout=timeout)
-
-
-class SSHSUTFactory(SSHBase, SUTFactory):
-    """
-    Factory object for SSHSUT implementation.
-    """
-
-    def create(self) -> SUT:
-        sut = SSHSUT(
-            host=self._host,
-            port=self._port,
-            user=self._user,
-            password=self._password,
-            timeout=self._timeout,
-            key_file=self._key_file,
-            ssh_opts=self._ssh_opts)
-
-        return sut

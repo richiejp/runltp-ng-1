@@ -39,7 +39,7 @@ class SimpleConsoleEvents(Events):
         else:
             print(msg, end=end)
 
-    def session_started(self, _: list, tmpdir: str) -> None:
+    def session_started(self, tmpdir: str) -> None:
         uname = platform.uname()
         message = "Host information\n\n"
         message += f"\tSystem: {uname.system}\n"

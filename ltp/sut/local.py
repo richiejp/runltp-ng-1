@@ -9,7 +9,6 @@ from ltp.channel import Channel
 from ltp.channel import ShellChannel
 from .base import SUT
 from .base import SUTError
-from .base import SUTFactory
 
 
 class LocalSUT(SUT):
@@ -36,16 +35,8 @@ class LocalSUT(SUT):
 
     def stop(self, timeout: int = 30) -> None:
         self._channel.stop(timeout=timeout)
+        self._channel = None
 
     def force_stop(self, timeout: int = 30) -> None:
         self._channel.force_stop(timeout=timeout)
-
-
-class LocalSUTFactory(SUTFactory):
-    """
-    LocalSUT factory class.
-    """
-
-    def create(self) -> SUT:
-        sut = LocalSUT()
-        return sut
+        self._channel = None

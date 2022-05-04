@@ -15,7 +15,6 @@ from ltp.channel import SerialChannel
 from ltp.channel.base import Channel
 from .base import SUT
 from .base import SUTError
-from .base import SUTFactory
 
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=consider-using-with
@@ -42,6 +41,8 @@ class QemuSUT(SUT):
         self._logger = logging.getLogger("ltp.sut.qemu")
         self._proc = None
         self._channel = None
+        self._stop = False
+        self._logged = False
 
         system = kwargs.get("system", "x86_64")
         self._qemu_cmd = f"qemu-system-{system}"
@@ -75,9 +76,12 @@ class QemuSUT(SUT):
         """
         Wait for a string and send a reply.
         """
+        if self._stop:
+            return
+
         line = ""
 
-        while not self._proc.poll():
+        while self._proc.poll() is None:
             data = self._proc.stdout.read(1)
             if not data:
                 continue
@@ -99,8 +103,9 @@ class QemuSUT(SUT):
 
         exitcode = self._proc.poll()
         if exitcode and exitcode != 0:
-            raise SUTError(
-                f"Qemu session ended with exit code {exitcode}")
+            if not self._stop:
+                raise SUTError(
+                    f"Qemu session ended with exit code {exitcode}")
 
     @property
     def name(self) -> str:
@@ -111,50 +116,62 @@ class QemuSUT(SUT):
         return self._channel
 
     def stop(self, timeout: int = 30) -> None:
-        if not self._proc:
-            return
+        self._stop = True
 
-        self._logger.info("Shutting down virtual machine")
+        if self._channel:
+            self._channel.stop()
 
-        self._channel.stop()
+        if self._proc:
+            self._logger.info("Shutting down virtual machine")
 
-        self._proc.stdin.write("\n")
-        self._proc.stdin.write("poweroff")
-        self._proc.stdin.write("\n")
+            if self._logged:
+                self._proc.stdin.write("\n")
+                self._proc.stdin.write("poweroff")
+                self._proc.stdin.write("\n")
 
-        try:
-            self._proc.stdin.flush()
-        except BrokenPipeError:
-            # sometimes we need to flush data after poweroff is sent,
-            # but if poweroff already shutted down VM, we'll obtain a
-            # BrokenPipeError that has to be ignored in this case
-            pass
+                try:
+                    self._proc.stdin.flush()
+                except BrokenPipeError:
+                    # sometimes we need to flush data after poweroff is sent,
+                    # but if poweroff already shutted down VM, we'll obtain a
+                    # BrokenPipeError that has to be ignored in this case
+                    pass
+            else:
+                self._proc.terminate()
 
-        secs = max(timeout, 0)
-        start_t = time.time()
+            secs = max(timeout, 0)
+            start_t = time.time()
 
-        while self._proc.poll() is None:
-            time.sleep(0.05)
-            if time.time() - start_t > secs:
-                raise SUTError("Virtual machine timed out during poweroff")
+            while self._proc.poll() is None:
+                time.sleep(0.05)
+                if time.time() - start_t > secs:
+                    raise SUTError("Virtual machine timed out during poweroff")
 
-        self._logger.info("Virtual machine stopped")
+            self._proc = None
+
+            self._logger.info("Virtual machine stopped")
 
     def force_stop(self, timeout: int = 30) -> None:
-        if not self._proc:
-            return
+        self._stop = True
 
-        self._logger.info("Killing virtual machine")
-        self._proc.kill()
-        self._logger.info("Virtual machine killed")
+        if self._channel:
+            self._channel.force_stop(timeout=timeout)
 
-        secs = max(timeout, 0)
-        start_t = time.time()
+        if self._proc:
+            self._logger.info("Killing virtual machine")
+            self._proc.kill()
 
-        while self._proc.poll() is None:
-            time.sleep(0.05)
-            if time.time() - start_t > secs:
-                raise SUTError("Virtual machine timed out during kill")
+            secs = max(timeout, 0)
+            start_t = time.time()
+
+            while self._proc.poll() is None:
+                time.sleep(0.05)
+                if time.time() - start_t > secs:
+                    raise SUTError("Virtual machine timed out during kill")
+
+            self._proc = None
+
+            self._logger.info("Virtual machine killed")
 
     # pylint: disable=too-many-statements
     def communicate(self, stdout_callback: callable = None) -> None:
@@ -163,6 +180,9 @@ class QemuSUT(SUT):
 
         if not shutil.which(self._qemu_cmd):
             raise SUTError(f"Command not found: {self._qemu_cmd}")
+
+        self._stop = False
+        self._logged = False
 
         self._logger.info("Starting virtual machine")
 
@@ -236,6 +256,9 @@ class QemuSUT(SUT):
             "login:",
             "root",
             stdout_callback=stdout_callback)
+
+        self._logged = True
+
         self._vm_wait_and_send(
             ("Password:", "password:"),
             self._password,
@@ -245,6 +268,9 @@ class QemuSUT(SUT):
             "\n",
             stdout_callback=stdout_callback)
 
+        if self._stop:
+            return
+
         self._logger.info("Creating communication objects")
 
         self._channel = SerialChannel(
@@ -253,50 +279,18 @@ class QemuSUT(SUT):
             transport_dev=transport_dev,
             transport_path=transport_file)
 
-        self._channel.run_cmd("export PS1=''", 1)
+        self._channel.start()
+
+        if self._stop:
+            return
+
+        self._channel.run_cmd("export PS1=''")
+
+        if self._stop:
+            return
 
         # mount virtual FS
         if self._virtfs:
-            self._channel.run_cmd("mount -t 9p -o trans=virtio host0 /mnt", 10)
+            self._channel.run_cmd("mount -t 9p -o trans=virtio host0 /mnt")
 
         self._logger.info("Virtual machine started")
-
-
-class QemuSUTFactory(SUTFactory):
-    """
-    Factory class implementation for QemuSUT.
-    """
-
-    def __init__(self, **kwargs) -> None:
-        """
-        :param ltpdir: LTP install directory
-        :type ltpdir: str
-        :param tmpdir: Session temporary directory
-        :type tmpdir: str
-        :param image: Path to bootable qemu image
-        :type image: str
-        :param image_overlay: If set, an image overlay is created before each
-            boot and changes are written to that instead of the original
-        :type image: str
-        :param password: Qemu image root password
-        :type password: str
-        :param opts: Additional qemu command line options
-        :type opts: list(str)
-        :param system: Qemu system, defaults to x86_64
-        :type system: str
-        :param ram: Qemu RAM size, defaults to 2G
-        :type ram: str
-        :param smp: Qemu CPUs defaults to 2
-        :type smp: str
-        :param virtfs: Path to a host folder to mount in the guest (on /mnt)
-        :type virtfs: str
-        :param serial: Qemu serial port device type, currently only support isa
-            (default) and virtio
-        :type serial: str
-        :param ro_image: Path to an image which will be exposed as read only
-        :type ro_image: str
-        """
-        self._kwargs = kwargs
-
-    def create(self) -> SUT:
-        return QemuSUT(**self._kwargs)

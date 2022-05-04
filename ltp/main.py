@@ -17,14 +17,12 @@ from argparse import ArgumentParser
 from argparse import Namespace
 
 from ltp import LTPException
-from ltp.sut import LocalSUTFactory
-from ltp.sut import QemuSUTFactory
-from ltp.sut import SUTFactory
-from ltp.sut import SSHSUTFactory
+from ltp.sut import LocalSUT
+from ltp.sut import QemuSUT
+from ltp.sut import SSHSUT
 from ltp.dispatcher import SerialDispatcher
 from ltp.results import SuiteResults
 from ltp.results import JSONExporter
-from ltp.common.events import Events
 from ltp.ui import SimpleConsoleEvents
 
 
@@ -128,14 +126,6 @@ def _setup_debug_log(tmpdir: str) -> None:
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-
-
-def _get_ui_events(args: Namespace) -> Events:
-    """
-    Return user interface events handler.
-    """
-    console = SimpleConsoleEvents(args.verbose)
-    return console
 
 
 def _from_params_to_config(params: list) -> dict:
@@ -257,25 +247,24 @@ def _install_config(value: str) -> dict:
     Return an install configuration according with the input string.
     Format for value is, for example:
 
-        mysite.com/repo.git:commit=8f308953c60cdd25e372e8c58a3c963ab98be276
+        master:commit=8f308953c60cdd25e372e8c58a3c963ab98be276
 
     """
     if not value:
         raise argparse.ArgumentTypeError("Install parameters can't be empty")
 
     params = value.split(':')
-    repo = params[0]
-    if '=' in repo:
+    branch = params[0]
+    if '=' in branch:
         raise argparse.ArgumentTypeError(
-            "First --install element must be the repository URL")
+            "First --install element must be the git branch")
 
     config = _from_params_to_config(params[1:])
 
     defaults = {
         'commit',
-        'branch',
+        'repo',
         'm32',
-        'repo_dir',
         'install_dir',
     }
 
@@ -284,36 +273,16 @@ def _install_config(value: str) -> dict:
             "Some parameters are not supported. "
             f"Please use the following: {', '.join(defaults)}")
 
-    config['repo'] = repo
+    if 'repo' not in config:
+        config['repo'] = 'http://github.com/linux-test-project/ltp.git'
+
+    config['branch'] = branch
 
     return config
 
 
-def _run_suites(args: Namespace, factory: SUTFactory, tmpdir: str) -> None:
-    """
-    Run given suites.
-    """
-    events = _get_ui_events(args)
-
-    ltpdir = os.environ.get("LTPROOT", "/opt/ltp")
-    _setup_debug_log(tmpdir)
-
-    try:
-        dispatcher = SerialDispatcher(ltpdir, tmpdir, factory, events)
-        results = dispatcher.exec_suites(args.run_suite)
-
-        if results:
-            for result in results:
-                _print_results(result)
-
-            if args.json_report:
-                exporter = JSONExporter()
-                exporter.save_file(results, args.json_report)
-    except LTPException as err:
-        logger = logging.getLogger("ltp.main")
-        logger.error("Error: %s", str(err))
-
-
+# pylint: disable=too-many-locals
+# pylint: disable=too-many-statements
 def _ltp_run(parser: ArgumentParser, args: Namespace) -> None:
     """
     Handle runltp-ng command options.
@@ -329,7 +298,7 @@ def _ltp_run(parser: ArgumentParser, args: Namespace) -> None:
     _setup_debug_log(tmpdir)
 
     # create SUT factory
-    sut_factory = None
+    sut = None
 
     if args.sut:
         config = args.sut
@@ -338,17 +307,67 @@ def _ltp_run(parser: ArgumentParser, args: Namespace) -> None:
         name = config['name']
 
         if name == 'qemu':
-            sut_factory = QemuSUTFactory(**args.sut)
+            sut = QemuSUT(**args.sut)
         elif name == 'ssh':
-            sut_factory = SSHSUTFactory(**args.sut)
+            sut = SSHSUT(**args.sut)
         else:
             raise parser.error(f"'{name}' SUT is not supported")
     else:
         # default SUT is local host
-        sut_factory = LocalSUTFactory()
+        sut = LocalSUT()
 
     # create dispatcher and run tests
-    _run_suites(args, sut_factory, tmpdir)
+    events = SimpleConsoleEvents(args.verbose)
+
+    kwargs = {}
+    kwargs['ltpdir'] = ltpdir
+    kwargs['tmpdir'] = tmpdir
+    kwargs['sut'] = sut
+    kwargs['events'] = events
+
+    dispatcher = SerialDispatcher(**kwargs)
+
+    try:
+        events.session_started(tmpdir)
+
+        dispatcher.start()
+
+        if args.install:
+            dispatcher.install_ltp(
+                args.install["repo"],
+                args.install.get("commit", None),
+                branch=args.install.get("branch", "master"),
+                m32=args.install.get("m32", False),
+                install_dir=args.install.get("install_dir", "/opt/ltp"))
+
+        results = dispatcher.exec_suites(args.run_suite)
+
+        if results:
+            for result in results:
+                _print_results(result)
+
+            if args.json_report:
+                exporter = JSONExporter()
+                exporter.save_file(results, args.json_report)
+
+        dispatcher.stop()
+
+        events.session_completed(results)
+    except LTPException as err:
+        logger = logging.getLogger("ltp.main")
+        logger.error("Error: %s", str(err))
+
+        events.session_error(str(err))
+    except KeyboardInterrupt:
+        try:
+            dispatcher.stop()
+
+            events.session_stopped()
+        except LTPException as err:
+            logger = logging.getLogger("ltp.main")
+            logger.error("Error: %s", str(err))
+
+            events.session_error(str(err))
 
 
 def run() -> None:
@@ -360,8 +379,7 @@ def run() -> None:
         "--verbose",
         "-v",
         action="store_true",
-        help="Verbose mode"
-    )
+        help="Verbose mode")
     parser.add_argument(
         "--run-suite",
         "-r",
@@ -373,6 +391,11 @@ def run() -> None:
         "-s",
         type=_sut_config,
         help="System Under Test parameters")
+    parser.add_argument(
+        "--install",
+        "-i",
+        type=_install_config,
+        help="LTP install configuration")
     parser.add_argument(
         "--json-report",
         "-j",

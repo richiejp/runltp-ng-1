@@ -5,7 +5,7 @@ import pytest
 from ltp.common.events import Events
 from ltp.dispatcher import DispatcherError
 from ltp.dispatcher import SerialDispatcher
-from ltp.sut import LocalSUTFactory
+from ltp.sut import LocalSUT
 
 
 class DummyEvents(Events):
@@ -23,40 +23,54 @@ class TestSerialDispatcher:
         """
         Test constructor with bad arguments.
         """
-        factory = LocalSUTFactory()
-
-        with pytest.raises(ValueError):
-            SerialDispatcher(str(tmpdir), None, factory, DummyEvents())
+        sut = LocalSUT()
 
         with pytest.raises(ValueError):
             SerialDispatcher(
-                str(tmpdir),
-                "this_folder_doesnt_exist",
-                factory,
-                DummyEvents())
+                tmpdir=str(tmpdir),
+                ltpdir=None,
+                sut=sut,
+                events=DummyEvents())
 
         with pytest.raises(ValueError):
-            SerialDispatcher(str(tmpdir), str(tmpdir), None, DummyEvents())
+            SerialDispatcher(
+                ltpdir=str(tmpdir),
+                tmpdir="this_folder_doesnt_exist",
+                sut=sut,
+                events=DummyEvents())
 
         with pytest.raises(ValueError):
-            SerialDispatcher(str(tmpdir), str(tmpdir), factory, None)
+            SerialDispatcher(
+                tmpdir=str(tmpdir),
+                ltpdir=str(tmpdir),
+                sut=None,
+                events=DummyEvents())
+
+        with pytest.raises(ValueError):
+            SerialDispatcher(
+                tmpdir=str(tmpdir),
+                ltpdir=str(tmpdir),
+                sut=sut,
+                events=None)
 
     @pytest.mark.usefixtures("prepare_tmpdir")
     def test_exec_suites_bad_args(self, tmpdir):
         """
         Test exec_suites() method with bad arguments.
         """
-        factory = LocalSUTFactory()
+        sut = LocalSUT()
         dispatcher = SerialDispatcher(
-            str(tmpdir),
-            str(tmpdir),
-            factory,
-            DummyEvents())
+            tmpdir=str(tmpdir),
+            ltpdir=str(tmpdir),
+            sut=sut,
+            events=DummyEvents())
+
+        dispatcher.start()
 
         with pytest.raises(ValueError):
             dispatcher.exec_suites(None)
 
-        with pytest.raises(DispatcherError):
+        with pytest.raises(ValueError):
             dispatcher.exec_suites(["this_suite_doesnt_exist"])
 
     @pytest.mark.usefixtures("prepare_tmpdir")
@@ -64,12 +78,14 @@ class TestSerialDispatcher:
         """
         Test exec_suites() method.
         """
-        factory = LocalSUTFactory()
+        sut = LocalSUT()
         dispatcher = SerialDispatcher(
-            str(tmpdir),
-            str(tmpdir),
-            factory,
-            DummyEvents())
+            tmpdir=str(tmpdir),
+            ltpdir=str(tmpdir),
+            sut=sut,
+            events=DummyEvents())
+
+        dispatcher.start()
 
         results = dispatcher.exec_suites(suites=["dirsuite0", "dirsuite2"])
 

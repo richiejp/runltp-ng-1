@@ -19,11 +19,9 @@ class Events:
     libraries.
     """
 
-    def session_started(self, suites: list, tmpdir: str) -> None:
+    def session_started(self, tmpdir: str) -> None:
         """
         Raised when a new session has started.
-        :param suites: list of testing suites to run
-        :type suites: list(str)
         :param tmpdir: temporary directory
         :type tmpdir: str
         """
