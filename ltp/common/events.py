@@ -150,6 +150,32 @@ class Events:
         """
         pass
 
+    def run_cmd_start(self, cmd: str) -> None:
+        """
+        Raised when a new command is going to be run.
+        :param cmd: command to run
+        :type cmd: str
+        """
+        pass
+
+    def run_cmd_stdout(self, line: str) -> None:
+        """
+        Raised when a new command has run.
+        :param line: stdout line
+        :type line: str
+        """
+        pass
+
+    def run_cmd_stop(self, cmd: str, returncode: int) -> None:
+        """
+        Raised when a new command has stopped.
+        :param cmd: command to run
+        :type cmd: str
+        :param returncode: command return code
+        :type returncode: int
+        """
+        pass
+
     def show_tests_list(self, suites: list) -> None:
         """
         Raised when user asked for suites list.

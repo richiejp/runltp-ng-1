@@ -285,12 +285,15 @@ class Session:
         else:
             sut.force_stop(timeout=timeout)
 
+    # pylint: disable=too-many-locals
+    # pylint: disable=too-many-statements
     def run_single(
             self,
             sut_config: dict,
             git_config: dict,
             report_path: str,
-            suites: list) -> None:
+            suites: list,
+            command: str) -> None:
         """
         Run some testing suites with a specific SUT configurations.
         :param sut_config: system under test configuration.
@@ -299,6 +302,9 @@ class Session:
             be installed.
         :type git_config: dict
         :param suites: suites to execute
+        :type suites: list
+        :param command: command to execute
+        :type command: str
         """
         if not sut_config:
             raise ValueError("sut configuration can't be empty")
@@ -330,8 +336,20 @@ class Session:
                     git_config.get("repo", self.LTP_REPO),
                     git_config.get("commit", None),
                     branch=git_config.get("branch", "master"),
-                    m32=git_config.get("m32", False),
+                    m32=git_config.get("m32", "0") == "1",
                     install_dir=git_config.get("install_dir", ltpdir))
+
+            if command:
+                self._events.run_cmd_start(command)
+
+                def _mystdout_line(line):
+                    self._events.run_cmd_stdout(line)
+
+                ret = sut.channel.run_cmd(
+                    command,
+                    stdout_callback=_mystdout_line)
+
+                self._events.run_cmd_stop(command, ret["returncode"])
 
             if suites:
                 dispatcher = SerialDispatcher(

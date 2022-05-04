@@ -146,6 +146,35 @@ class SimpleConsoleEvents(Events):
 
             self._print(line, color=col)
 
+    def run_cmd_start(self, cmd: str) -> None:
+        msg = f"{cmd}: "
+        if self._verbose:
+            msg = f"{cmd}\n"
+
+        self._print(msg, end="", color=self.CYAN)
+
+    def run_cmd_stdout(self, line) -> None:
+        if self._verbose:
+            self._print(line)
+
+    def run_cmd_stop(self, _: str, returncode: int) -> None:
+        if self._verbose:
+            msg = "Done"
+            col = self.GREEN
+
+            if returncode != 0:
+                msg = "Error"
+                col = self.RED
+        else:
+            msg = "ok"
+            col = self.GREEN
+
+            if returncode != 0:
+                msg = "error"
+                col = self.RED
+
+        self._print(msg, color=col)
+
     def show_install_dependences(
             self,
             refresh_cmd: str,

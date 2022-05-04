@@ -50,7 +50,7 @@ def _get_qemu_config(params: list) -> dict:
         raise argparse.ArgumentTypeError(
             "'image' parameter is required by qemu SUT")
 
-    defaults = {
+    defaults = (
         'image',
         'image_overlay',
         'password',
@@ -60,12 +60,16 @@ def _get_qemu_config(params: list) -> dict:
         'serial',
         'ro_image',
         'virtfs'
-    }
+    )
 
     if not set(config).issubset(defaults):
         raise argparse.ArgumentTypeError(
             "Some parameters are not supported. "
             f"Please use the following: {', '.join(defaults)}")
+
+    if "smp" in config:
+        if not str.isdigit(config["smp"]):
+            raise argparse.ArgumentTypeError("smp must be and integer")
 
     return config
 
@@ -80,19 +84,29 @@ def _get_ssh_config(params: list) -> dict:
         raise argparse.ArgumentTypeError(
             "'host' parameter is required by qemu SUT")
 
-    defaults = {
+    defaults = (
         'host',
         'port',
         'user',
         'password',
         'key_file',
         'timeout',
-    }
+    )
 
     if not set(config).issubset(defaults):
         raise argparse.ArgumentTypeError(
             "Some parameters are not supported. "
             f"Please use the following: {', '.join(defaults)}")
+
+    if "port" in config:
+        port = config["port"]
+        if not str.isdigit(port) and int(port) not in range(1, 65536):
+            raise argparse.ArgumentTypeError(
+                "port must be and integer inside [1-65535]")
+
+    if "timeout" in config:
+        if not str.isdigit(config["timeout"]):
+            raise argparse.ArgumentTypeError("timeout must be and integer")
 
     return config
 
@@ -145,17 +159,22 @@ def _install_config(value: str) -> dict:
 
     config = _from_params_to_config(params[1:])
 
-    defaults = {
+    defaults = (
         'commit',
         'repo',
         'm32',
         'install_dir',
-    }
+    )
 
     if not set(config).issubset(defaults):
         raise argparse.ArgumentTypeError(
             "Some parameters are not supported. "
             f"Please use the following: {', '.join(defaults)}")
+
+    if "m32" in config:
+        m32 = config["m32"]
+        if not str.isdigit(m32) and m32 not in ["0", "1"]:
+            raise argparse.ArgumentTypeError("m32 must be 0 or 1")
 
     if 'repo' not in config:
         config['repo'] = 'http://github.com/linux-test-project/ltp.git'
@@ -172,15 +191,19 @@ def _ltp_run(parser: ArgumentParser, args: Namespace) -> None:
     if args.json_report and os.path.exists(args.json_report):
         parser.error(f"JSON report file already exists: {args.json_report}")
 
-    if not args.run_suite and not args.install:
-        parser.error("--run-suite or --install are required")
+    if not args.run_suite and not args.run_cmd and not args.install:
+        parser.error("--run-suite/--run-cmd or --install are required")
 
-    session = Session(args.verbose)
-    session.run_single(
-        args.sut,
-        args.install,
-        args.json_report,
-        args.run_suite)
+    try:
+        session = Session(args.verbose)
+        session.run_single(
+            args.sut,
+            args.install,
+            args.json_report,
+            args.run_suite,
+            args.run_cmd)
+    except ValueError as err:
+        print(err)
 
 
 def run() -> None:
@@ -198,6 +221,10 @@ def run() -> None:
         "-r",
         nargs="*",
         help="Suites to run")
+    parser.add_argument(
+        "--run-cmd",
+        "-c",
+        help="Command to run")
     parser.add_argument(
         "--sut",
         "-s",
