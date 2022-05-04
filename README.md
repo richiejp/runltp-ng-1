@@ -24,6 +24,15 @@ just before executing suites on SUT:
     # install LTP using master branch, run syscalls and dio testing suites in qemu VM
     runltp-ng --install=master --sut=qemu:image=folder/image.qcow2 --run-suite syscalls dio
 
+And `--install` option can be used also by itself to install LTP without
+executing any suite:
+
+    # install LTP using master branch
+    runltp-ng --install=master
+
+    # install LTP in Qemu using master branch
+    runltp-ng --install=master --sut=qemu:image=folder/image.qcow2
+
 Please use `--help` to check all available options for the commands above.
 
 The following environment variables are supported and they can be used to
