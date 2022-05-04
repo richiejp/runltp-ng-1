@@ -88,6 +88,8 @@ parameters:
 - **ram**: RAM of the VM with qemu syntax (default: 2G)
 - **smp**: number of CPUs (default: 2)
 - **serial**: type of serial communication: isa or virtio (default: isa)
+- **virtfs**: directory to mount inside VM
+- **ro_image**: path to an image which will be exposed as read only
 
 For example, `--sut=qemu:image=image.qcow2:smp=12:ram=10G:serial=virtio`.
 
