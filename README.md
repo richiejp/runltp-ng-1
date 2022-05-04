@@ -18,6 +18,12 @@ Some basic commands are the following:
     # run syscalls and dio testing suites via SSH
     runltp-ng --sut=ssh:host=10.0.10.1:key_file=privkey_rsa --run-suite syscalls dio
 
+Also `--install` option can be used to install a fresh version of the LTP suite
+just before executing suites on SUT:
+
+    # install LTP using master branch, run syscalls and dio testing suites in qemu VM
+    runltp-ng --install=master --sut=qemu:image=folder/image.qcow2 --run-suite syscalls dio
+
 Please use `--help` to check all available options for the commands above.
 
 The following environment variables are supported and they can be used to
