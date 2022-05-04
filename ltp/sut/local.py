@@ -34,9 +34,15 @@ class LocalSUT(SUT):
         self._channel = ShellChannel()
 
     def stop(self, timeout: int = 30) -> None:
+        if not self._channel:
+            return
+
         self._channel.stop(timeout=timeout)
         self._channel = None
 
     def force_stop(self, timeout: int = 30) -> None:
+        if not self._channel:
+            return
+
         self._channel.force_stop(timeout=timeout)
         self._channel = None

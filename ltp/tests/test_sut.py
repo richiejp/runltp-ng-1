@@ -196,9 +196,9 @@ class TestQemuSUT:
 
         sut.communicate()
 
-        assert sut.channel is not None
-
         thread.join()
+
+        assert sut.channel is None
 
     @pytest.mark.parametrize("force", [True, False])
     @pytest.mark.parametrize("serial", ["isa", "virtio"])

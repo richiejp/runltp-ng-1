@@ -120,6 +120,7 @@ class QemuSUT(SUT):
 
         if self._channel:
             self._channel.stop()
+            self._channel = None
 
         if self._proc:
             self._logger.info("Shutting down virtual machine")
@@ -156,6 +157,7 @@ class QemuSUT(SUT):
 
         if self._channel:
             self._channel.force_stop(timeout=timeout)
+            self._channel = None
 
         if self._proc:
             self._logger.info("Killing virtual machine")
