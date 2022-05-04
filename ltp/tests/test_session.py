@@ -2,9 +2,14 @@
 Unittest for main module.
 """
 import os
+import pwd
 import pathlib
 import pytest
+from ltp.session import Session
 from ltp.session import TempRotator
+
+TEST_QEMU_IMAGE = os.environ.get("TEST_QEMU_IMAGE", None)
+TEST_QEMU_PASSWORD = os.environ.get("TEST_QEMU_PASSWORD", None)
 
 
 class TestTempRotator:
@@ -56,3 +61,115 @@ class TestTempRotator:
         ]
 
         assert list(set(paths[plus_rotate:]) - set(paths_dir)) == []
+
+
+class TestSession:
+    """
+    Tests for Session implementation.
+    """
+
+    @pytest.mark.usefixtures("prepare_tmpdir")
+    @pytest.mark.parametrize("verbose", [True, False])
+    @pytest.mark.parametrize("git_config", [dict(branch="master"), None])
+    @pytest.mark.parametrize("use_report", [True, False])
+    @pytest.mark.parametrize("suites", [None, ["dirsuite0", "dirsuite1"]])
+    def test_run_single_host(
+            self,
+            tmpdir,
+            use_report,
+            verbose,
+            git_config,
+            suites):
+        """
+        Test run_single on host SUT.
+        """
+        if git_config and os.geteuid() != 0:
+            pytest.skip(msg="Must be root to install LTP")
+
+        report_path = None
+        if use_report:
+            report_path = str(tmpdir / "report.json")
+
+        session = Session(verbose=verbose)
+        session.run_single(dict(name="host"), git_config, report_path, suites)
+
+        if use_report:
+            assert os.path.isfile(report_path)
+
+    @pytest.mark.usefixtures("prepare_tmpdir", "ssh_server")
+    @pytest.mark.parametrize("verbose", [True, False])
+    @pytest.mark.parametrize("git_config", [dict(branch="master"), None])
+    @pytest.mark.parametrize("use_report", [True, False])
+    @pytest.mark.parametrize("suites", [None, ["dirsuite0", "dirsuite1"]])
+    def test_run_single_ssh(
+            self,
+            tmpdir,
+            use_report,
+            verbose,
+            git_config,
+            suites):
+        """
+        Test run_single on SSH sut.
+        """
+        user = pwd.getpwuid(os.geteuid()).pw_name
+        if git_config and user != "root":
+            pytest.skip(msg="Must be root to install LTP")
+
+        report_path = None
+        if use_report:
+            report_path = str(tmpdir / "report.json")
+
+        testsdir = os.path.abspath(os.path.dirname(__file__))
+        key_file = os.path.sep.join([testsdir, 'id_rsa'])
+
+        session = Session(verbose=verbose)
+        session.run_single(
+            {
+                "name": "ssh",
+                "host": "localhost",
+                "port": 2222,
+                "user": user,
+                "key_file": key_file
+            },
+            git_config,
+            report_path,
+            suites)
+
+        if use_report and suites:
+            assert os.path.isfile(report_path)
+
+    @pytest.mark.skipif(TEST_QEMU_IMAGE is None, reason="TEST_QEMU_IMAGE is not defined")
+    @pytest.mark.skipif(TEST_QEMU_PASSWORD is None, reason="TEST_QEMU_IMAGE is not defined")
+    @pytest.mark.usefixtures("prepare_tmpdir")
+    @pytest.mark.parametrize("verbose", [True, False])
+    @pytest.mark.parametrize("git_config", [dict(branch="master"), None])
+    @pytest.mark.parametrize("use_report", [True, False])
+    @pytest.mark.parametrize("suites", [None, ["dirsuite0", "dirsuite1"]])
+    def test_run_single_qemu(
+            self,
+            tmpdir,
+            verbose,
+            git_config,
+            use_report,
+            suites):
+        """
+        Test run_single on Qemu host.
+        """
+        report_path = None
+        if use_report:
+            report_path = str(tmpdir / "report.json")
+
+        session = Session(verbose=verbose)
+        session.run_single(
+            {
+                "name": "qemu",
+                "image": TEST_QEMU_IMAGE,
+                "password": TEST_QEMU_PASSWORD,
+                "image_overlay": "image_copy.qcow2"
+            },
+            git_config,
+            report_path,
+            suites)
+
+        if use_report and suites:
+            assert os.path.isfile(report_path)
