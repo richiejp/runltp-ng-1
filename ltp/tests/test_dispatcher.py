@@ -65,13 +65,16 @@ class TestSerialDispatcher:
             sut=sut,
             events=DummyEvents())
 
-        dispatcher.start()
+        sut.communicate()
 
-        with pytest.raises(ValueError):
-            dispatcher.exec_suites(None)
+        try:
+            with pytest.raises(ValueError):
+                dispatcher.exec_suites(None)
 
-        with pytest.raises(ValueError):
-            dispatcher.exec_suites(["this_suite_doesnt_exist"])
+            with pytest.raises(ValueError):
+                dispatcher.exec_suites(["this_suite_doesnt_exist"])
+        finally:
+            sut.stop()
 
     @pytest.mark.usefixtures("prepare_tmpdir")
     def test_exec_suites(self, tmpdir):
@@ -85,24 +88,27 @@ class TestSerialDispatcher:
             sut=sut,
             events=DummyEvents())
 
-        dispatcher.start()
+        sut.communicate()
 
-        results = dispatcher.exec_suites(suites=["dirsuite0", "dirsuite2"])
+        try:
+            results = dispatcher.exec_suites(suites=["dirsuite0", "dirsuite2"])
 
-        assert results[0].suite.name == "dirsuite0"
-        assert results[0].tests_results[0].passed == 1
-        assert results[0].tests_results[0].failed == 0
-        assert results[0].tests_results[0].skipped == 0
-        assert results[0].tests_results[0].warnings == 0
-        assert results[0].tests_results[0].broken == 0
-        assert results[0].tests_results[0].return_code == 0
-        assert results[0].tests_results[0].exec_time > 0
+            assert results[0].suite.name == "dirsuite0"
+            assert results[0].tests_results[0].passed == 1
+            assert results[0].tests_results[0].failed == 0
+            assert results[0].tests_results[0].skipped == 0
+            assert results[0].tests_results[0].warnings == 0
+            assert results[0].tests_results[0].broken == 0
+            assert results[0].tests_results[0].return_code == 0
+            assert results[0].tests_results[0].exec_time > 0
 
-        assert results[1].suite.name == "dirsuite2"
-        assert results[1].tests_results[0].passed == 0
-        assert results[1].tests_results[0].failed == 0
-        assert results[1].tests_results[0].skipped == 1
-        assert results[1].tests_results[0].warnings == 0
-        assert results[1].tests_results[0].broken == 0
-        assert results[1].tests_results[0].return_code == 0
-        assert results[1].tests_results[0].exec_time > 0
+            assert results[1].suite.name == "dirsuite2"
+            assert results[1].tests_results[0].passed == 0
+            assert results[1].tests_results[0].failed == 0
+            assert results[1].tests_results[0].skipped == 1
+            assert results[1].tests_results[0].warnings == 0
+            assert results[1].tests_results[0].broken == 0
+            assert results[1].tests_results[0].return_code == 0
+            assert results[1].tests_results[0].exec_time > 0
+        finally:
+            sut.stop()

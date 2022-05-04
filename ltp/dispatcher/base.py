@@ -101,39 +101,11 @@ class Dispatcher:
         """
         raise NotImplementedError()
 
-    def start(self) -> None:
-        """
-        Initialize dispatcher before operations.
-        """
-        raise NotImplementedError()
-
     def stop(self, timeout: int = 30) -> None:
         """
         Stop the current execution.
         :param timeout: timeout before stopping dispatcher
         :type timeout: int
-        """
-        raise NotImplementedError()
-
-    def install_ltp(
-            self,
-            repo: str,
-            commit: str,
-            branch: str = "master",
-            m32: bool = False,
-            install_dir: str = "/opt/ltp") -> None:
-        """
-        Install LTP on SUT.
-        :param repo: git repository
-        :type repo: str
-        :param commit: git commit
-        :type commit: str
-        :param branch: git branch
-        :type branch: str
-        :param m32: 32bit support installation
-        :type m32: bool
-        :param install_dir: installation directory
-        :type install_dir: str
         """
         raise NotImplementedError()
 

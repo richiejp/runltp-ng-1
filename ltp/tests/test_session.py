@@ -4,7 +4,7 @@ Unittest for main module.
 import os
 import pathlib
 import pytest
-from ltp.main import TempRotator
+from ltp.session import TempRotator
 
 
 class TestTempRotator:
