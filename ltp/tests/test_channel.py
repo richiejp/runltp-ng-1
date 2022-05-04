@@ -105,6 +105,7 @@ class _TestDataTransfer:
 
 
 @pytest.mark.usefixtures("ssh_server")
+@pytest.mark.ssh
 class TestSSHChannel(_TestDataTransfer):
     """
     Tests for SSHChannel implementation.

@@ -108,6 +108,7 @@ class TestLocalSUT:
         assert ret["returncode"] != 0
 
 
+@pytest.mark.qemu
 @pytest.mark.skipif(TEST_QEMU_IMAGE is None, reason="TEST_QEMU_IMAGE is not defined")
 @pytest.mark.skipif(TEST_QEMU_PASSWORD is None, reason="TEST_QEMU_IMAGE is not defined")
 @pytest.mark.parametrize("image", [TEST_QEMU_IMAGE])
@@ -357,6 +358,7 @@ class TestQemuSUT:
             sut.stop()
 
 
+@pytest.mark.ssh
 class TestSSHSUT:
     """
     Test the SSHSUT implementation.

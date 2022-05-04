@@ -103,6 +103,7 @@ class TestSession:
         if use_report and suites:
             assert os.path.isfile(report_path)
 
+    @pytest.mark.ssh
     @pytest.mark.usefixtures("prepare_tmpdir", "ssh_server")
     @pytest.mark.parametrize("verbose", [True, False])
     @pytest.mark.parametrize("git_config", [dict(branch="master"), None])
@@ -148,6 +149,7 @@ class TestSession:
         if use_report and suites:
             assert os.path.isfile(report_path)
 
+    @pytest.mark.qemu
     @pytest.mark.skipif(TEST_QEMU_IMAGE is None, reason="TEST_QEMU_IMAGE is not defined")
     @pytest.mark.skipif(TEST_QEMU_PASSWORD is None, reason="TEST_QEMU_IMAGE is not defined")
     @pytest.mark.usefixtures("prepare_tmpdir")
