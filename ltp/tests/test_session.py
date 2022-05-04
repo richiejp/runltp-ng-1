@@ -73,13 +73,15 @@ class TestSession:
     @pytest.mark.parametrize("git_config", [dict(branch="master"), None])
     @pytest.mark.parametrize("use_report", [True, False])
     @pytest.mark.parametrize("suites", [None, ["dirsuite0", "dirsuite1"]])
+    @pytest.mark.parametrize("command", [None, "ls -1"])
     def test_run_single_host(
             self,
             tmpdir,
             use_report,
             verbose,
             git_config,
-            suites):
+            suites,
+            command):
         """
         Test run_single on host SUT.
         """
@@ -91,9 +93,14 @@ class TestSession:
             report_path = str(tmpdir / "report.json")
 
         session = Session(verbose=verbose)
-        session.run_single(dict(name="host"), git_config, report_path, suites)
+        session.run_single(
+            dict(name="host"),
+            git_config,
+            report_path,
+            suites,
+            command)
 
-        if use_report:
+        if use_report and suites:
             assert os.path.isfile(report_path)
 
     @pytest.mark.usefixtures("prepare_tmpdir", "ssh_server")
@@ -101,13 +108,15 @@ class TestSession:
     @pytest.mark.parametrize("git_config", [dict(branch="master"), None])
     @pytest.mark.parametrize("use_report", [True, False])
     @pytest.mark.parametrize("suites", [None, ["dirsuite0", "dirsuite1"]])
+    @pytest.mark.parametrize("command", [None, "ls -1"])
     def test_run_single_ssh(
             self,
             tmpdir,
             use_report,
             verbose,
             git_config,
-            suites):
+            suites,
+            command):
         """
         Test run_single on SSH sut.
         """
@@ -133,7 +142,8 @@ class TestSession:
             },
             git_config,
             report_path,
-            suites)
+            suites,
+            command)
 
         if use_report and suites:
             assert os.path.isfile(report_path)
@@ -145,13 +155,15 @@ class TestSession:
     @pytest.mark.parametrize("git_config", [dict(branch="master"), None])
     @pytest.mark.parametrize("use_report", [True, False])
     @pytest.mark.parametrize("suites", [None, ["dirsuite0", "dirsuite1"]])
+    @pytest.mark.parametrize("command", [None, "ls -1"])
     def test_run_single_qemu(
             self,
             tmpdir,
             verbose,
             git_config,
             use_report,
-            suites):
+            suites,
+            command):
         """
         Test run_single on Qemu host.
         """
@@ -169,7 +181,8 @@ class TestSession:
             },
             git_config,
             report_path,
-            suites)
+            suites,
+            command)
 
         if use_report and suites:
             assert os.path.isfile(report_path)
