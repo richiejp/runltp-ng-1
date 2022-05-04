@@ -4,7 +4,6 @@ Unit tests for Channel implementations.
 import os
 import time
 import signal
-import unittest
 from unittest import mock
 import threading
 import subprocess
@@ -571,9 +570,9 @@ class TestSerialChannel:
                               transport_path=str(target),
                               transport_dev=None)
 
-    def test_command(self, tmpdir):
+    def test_run_cmd(self, tmpdir):
         """
-        Test start() method.
+        Test run_cmd method.
         """
         transport_dev = tmpdir / "ttyS0"
         transport_dev.write("")
@@ -635,9 +634,9 @@ class TestSerialChannel:
             assert data["env"] == env
             assert data["cwd"] == cwd
 
-    def test_command_timeout(self, tmpdir):
+    def test_run_cmd_timeout(self, tmpdir):
         """
-        Test start() method when goes in timeout.
+        Test run_cmd method when goes in timeout.
         """
         transport_dev = tmpdir / "ttyS0"
         transport_dev.write("")
@@ -659,3 +658,77 @@ class TestSerialChannel:
             # we are not handling the command, so we will run out of time
             with pytest.raises(ChannelError):
                 runner.run_cmd("echo 'this-is-not-a-test'", timeout=0.01)
+
+    def test_stop_run_cmd(self, tmpdir):
+        """
+        Test run_cmd method when it's stopped.
+        """
+        transport_dev = tmpdir / "ttyS0"
+        transport_dev.write("")
+
+        transport_path = tmpdir / "transport.bin"
+        transport_path.write("")
+
+        target = tmpdir / "target"
+        target.write("")
+
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
+
+        with open(target, "r+") as mytarget:
+            data = None
+
+            def _emulate_shell(cmd):
+                """
+                Simple mock that gets command, execute it and write into target
+                file. This function overrides TextIOWrapper::write method.
+                """
+                if not cmd:
+                    raise ValueError("command is empty")
+
+                with open(target, 'a+') as ftarget:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        shell=True,
+                        env=env,
+                        cwd=cwd)
+
+                    stdout = proc.communicate()[0]
+                    ftarget.write(stdout.decode("utf-8"))
+
+            runner = SerialChannel(
+                stdin=mytarget,
+                stdout=mytarget,
+                transport_dev=str(transport_dev),
+                transport_path=str(transport_path))
+            runner.start()
+
+            runner._stdin.write = mock.MagicMock()
+            runner._stdin.write.side_effect = _emulate_shell
+
+            def _threaded():
+                start_t = time.time()
+                while not runner.is_running:
+                    assert time.time() - start_t < 4
+
+                runner.stop()
+
+            thread = threading.Thread(target=_threaded, daemon=True)
+            thread.start()
+
+            data = runner.run_cmd(
+                "sleep 2",
+                timeout=4,
+                env=env,
+                cwd=cwd)
+
+            thread.join()
+
+            assert data["command"] == "sleep 2"
+            assert data["returncode"] == signal.SIGTERM
+            assert data["stdout"] == ""
+            assert data["exec_time"] > 0
+            assert data["env"] == env
+            assert data["cwd"] == cwd

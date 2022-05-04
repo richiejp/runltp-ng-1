@@ -245,7 +245,7 @@ class SSHChannel(SSHBase, Channel):
 
                 try:
                     scp.get(target_path, local_path=local_path)
-                except SCPException as err:
+                except (SCPException, SSHException, EOFError) as err:
                     if self._stop and scp.channel.closed:
                         return
                     raise ChannelError(err)

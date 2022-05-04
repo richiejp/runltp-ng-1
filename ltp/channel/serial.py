@@ -9,6 +9,7 @@ import os
 import re
 import time
 import string
+import signal
 import secrets
 import logging
 from .base import Channel
@@ -137,7 +138,7 @@ class SerialChannel(Channel):
             stdout += line
 
         if self._stop:
-            retcode = -1
+            retcode = signal.SIGTERM
 
         t_end = time.time() - t_start
 
@@ -202,31 +203,13 @@ class SerialChannel(Channel):
         self._stop = False
         self._running = True
 
+        trans_dev = f"/dev/{self._transport_dev}"
+
         try:
-            # check for transport device existence
-            trans_dev = f"/dev/{self._transport_dev}"
-
-            ret = self.run_cmd(f"test -e {trans_dev}", timeout=1)
-            if ret["returncode"] != 0:
-                raise ChannelError(f"{trans_dev} doesn't exist on trarget")
-
-            if self._stop:
-                return
-
-            # check for target file existence
-            ret = self.run_cmd(f"test -f {target_path}", timeout=1)
-            if ret["returncode"] != 0:
-                raise ChannelError(
-                    f"{target_path} doesn't exist on trarget")
-
-            if self._stop:
-                return
-
-            # send target file to transport device
-            ret = self.run_cmd(
-                f"cat {target_path} > {trans_dev}", timeout=3600)
-            if ret["returncode"] != 0:
-                raise ChannelError(f"Can't send file to {trans_dev}")
+            ret = self.run_cmd(f"cat {target_path} > {trans_dev}")
+            if ret["returncode"] not in [0, signal.SIGTERM]:
+                stdout = ret["stdout"]
+                raise ChannelError(f"Can't send file to {trans_dev}: {stdout}")
 
             if self._stop:
                 return
