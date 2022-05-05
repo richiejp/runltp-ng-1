@@ -101,14 +101,24 @@ class Session:
     LTP_REPO = 'http://github.com/linux-test-project/ltp.git'
     LTP_DIR = '/opt/ltp'
 
-    def __init__(self, verbose: bool = False) -> None:
+    def __init__(
+            self,
+            suite_timeout: int = 3600,
+            exec_timeout: int = 3600,
+            verbose: bool = False) -> None:
         """
         :param verbose: if True, more messages will come from the console.
         :type verbose: bool
+        :param suite_timeout: timeout before stopping testing suite
+        :type suite_timeout: int
+        :param exec_timeout: timeout before stopping single execution
+        :type exec_timeout: int
         """
         self._logger = logging.getLogger("ltp.session")
         self._events = SimpleConsoleEvents(verbose=verbose)
         self._installer = None
+        self._suite_timeout = suite_timeout
+        self._exec_timeout = exec_timeout
 
     @staticmethod
     def _setup_debug_log(tmpdir: str) -> None:
@@ -347,6 +357,7 @@ class Session:
 
                 ret = sut.channel.run_cmd(
                     command,
+                    timeout=self._exec_timeout,
                     stdout_callback=_mystdout_line)
 
                 self._events.run_cmd_stop(command, ret["returncode"])
@@ -356,7 +367,9 @@ class Session:
                     ltpdir=ltpdir,
                     tmpdir=tmpdir,
                     sut=sut,
-                    events=self._events)
+                    events=self._events,
+                    suite_timeout=self._suite_timeout,
+                    test_timeout=self._exec_timeout)
 
                 self._logger.info("Created dispatcher")
 

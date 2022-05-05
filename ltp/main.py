@@ -195,7 +195,11 @@ def _ltp_run(parser: ArgumentParser, args: Namespace) -> None:
         parser.error("--run-suite/--run-cmd or --install are required")
 
     try:
-        session = Session(args.verbose)
+        session = Session(
+            verbose=args.verbose,
+            suite_timeout=args.suite_timeout,
+            exec_timeout=args.exec_timeout)
+
         session.run_single(
             args.sut,
             args.install,
@@ -216,6 +220,18 @@ def run() -> None:
         "-v",
         action="store_true",
         help="Verbose mode")
+    parser.add_argument(
+        "--suite-timeout",
+        "-T",
+        type=int,
+        default=3600,
+        help="Timeout before stopping the suite")
+    parser.add_argument(
+        "--exec-timeout",
+        "-t",
+        type=int,
+        default=3600,
+        help="Timeout before stopping a single execution")
     parser.add_argument(
         "--run-suite",
         "-r",
