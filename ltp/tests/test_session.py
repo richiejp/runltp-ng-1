@@ -3,6 +3,7 @@ Unittest for main module.
 """
 import os
 import pwd
+import time
 import pathlib
 import pytest
 from ltp.session import Session
@@ -41,6 +42,10 @@ class TestTempRotator:
 
             # force cache IO operations
             os.sync()
+
+        # just wait and re-sync to be sure about files removal
+        time.sleep(0.5)
+        os.sync()
 
         sorted_paths = sorted(
             pathlib.Path(rotator._tmpbase).iterdir(),
