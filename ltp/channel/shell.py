@@ -107,12 +107,14 @@ class ShellChannel(Channel):
 
             if t_secs >= 0:
                 def _threaded():
-                    if self._process or self._stop:
+                    if self._stop:
                         return
 
                     self._logger.info(
                         "Command timed out after %d seconds", timeout)
-                    self._process.kill()
+
+                    if self._process:
+                        self._process.kill()
 
                 timer = Timer(t_secs, _threaded)
                 timer.start()
