@@ -17,6 +17,12 @@ class DispatcherError(LTPException):
     """
 
 
+class SuiteTimeoutError(LTPException):
+    """
+    Raised when suite reaches timeout during execution.
+    """
+
+
 class Dispatcher:
     """
     A dispatcher that schedule jobs to run on target.

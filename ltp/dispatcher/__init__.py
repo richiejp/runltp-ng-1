@@ -7,10 +7,12 @@
 """
 from .base import Dispatcher
 from .base import DispatcherError
+from .base import SuiteTimeoutError
 from .serial import SerialDispatcher
 
 __all__ = [
     "Dispatcher",
     "DispatcherError",
+    "SuiteTimeoutError",
     "SerialDispatcher",
 ]

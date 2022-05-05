@@ -7,7 +7,6 @@
 """
 import os
 import time
-from ltp import LTPException
 from ltp.channel import Channel
 from ltp.metadata import Suite
 from ltp.metadata import Test
@@ -16,6 +15,7 @@ from ltp.results import SuiteResults
 from ltp.results import TestResults
 from .base import Dispatcher
 from .base import DispatcherError
+from .base import SuiteTimeoutError
 
 
 class SerialDispatcher(Dispatcher):
@@ -33,11 +33,17 @@ class SerialDispatcher(Dispatcher):
         :type sut: SUT
         :param events: session events object
         :type events: Events
+        :param suite_timeout: timeout for single suite. Default: 3600
+        :type suite_timeout: int
+        :param test_timeout: timeout for single suite. Default: 3600
+        :type test_timeout: int
         """
         self._ltpdir = kwargs.get("ltpdir", None)
         self._tmpdir = kwargs.get("tmpdir", None)
         self._sut = kwargs.get("sut", None)
         self._events = kwargs.get("events", None)
+        self._suite_timeout = max(kwargs.get("suite_timeout", 3600), 0)
+        self._test_timeout = max(kwargs.get("test_timeout", 3600), 0)
         self._is_running = False
         self._stop = False
         self._metadata = RuntestMetadata()
@@ -114,10 +120,9 @@ class SerialDispatcher(Dispatcher):
         def _mystdout_line(line):
             self._events.test_stdout_line(test, line)
 
-        # TODO: set specific timeout for each test?
         test_data = self._sut.channel.run_cmd(
             cmd,
-            timeout=3600,
+            timeout=self._test_timeout,
             cwd=self._ltpdir,
             env=env,
             stdout_callback=_mystdout_line)
@@ -149,6 +154,8 @@ class SerialDispatcher(Dispatcher):
             # execute tests
             tests_results = []
 
+            start_t = time.time()
+
             for test in suite.tests:
                 if self._stop:
                     return None
@@ -158,6 +165,11 @@ class SerialDispatcher(Dispatcher):
                     break
 
                 tests_results.append(results)
+
+                if time.time() - start_t >= self._suite_timeout:
+                    raise SuiteTimeoutError(
+                        f"{suite.name} suite timed out "
+                        f"(timeout={self._suite_timeout})")
 
             # create suite results
             distro_str = self._read_sut_info(
@@ -182,7 +194,7 @@ class SerialDispatcher(Dispatcher):
                 arch=arch_str)
         finally:
             # read kernel messages for the current SUT instance
-            dmesg_stdout = self._sut.channel.run_cmd("dmesg", timeout=10)
+            dmesg_stdout = self._sut.channel.run_cmd("dmesg", timeout=60)
             command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
             with open(command, "w", encoding="utf-8") as fdmesg:
                 fdmesg.write(dmesg_stdout["stdout"])
@@ -238,9 +250,6 @@ class SerialDispatcher(Dispatcher):
                     break
 
                 results.append(result)
-        except LTPException as err:
-            self._events.session_error(str(err))
-            raise err
         finally:
             self._is_running = False
             self._stop = False
