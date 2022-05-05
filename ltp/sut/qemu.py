@@ -278,7 +278,7 @@ class QemuSUT(SUT):
         self._channel = SerialChannel(
             stdin=self._proc.stdin,
             stdout=self._proc.stdout,
-            transport_dev=transport_dev,
+            transport_dev=f"/dev/{transport_dev}",
             transport_path=transport_file)
 
         self._channel.start()
