@@ -213,9 +213,9 @@ class SSHChannel(SSHBase, Channel):
             if "Timeout" in str(err):
                 raise ChannelTimeoutError(
                     f"'{command}' command timed out (timeout={timeout})")
-            else:
-                raise ChannelError(err)
-        except socket.timeout as err:
+
+            raise ChannelError(err)
+        except socket.timeout:
             raise ChannelTimeoutError(
                 f"'{command}' command timed out (timeout={timeout})")
         except FileNotFoundError as err:

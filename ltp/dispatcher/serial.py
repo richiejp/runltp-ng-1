@@ -133,6 +133,7 @@ class SerialDispatcher(Dispatcher):
 
         return results
 
+    # pylint: disable=too-many-locals
     def _run_suite(self, suite: Suite) -> SuiteResults:
         """
         Run a single testing suite and return suite results.
