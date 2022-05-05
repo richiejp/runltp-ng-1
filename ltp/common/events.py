@@ -57,6 +57,14 @@ class Events:
         """
         pass
 
+    def sut_restart(self, sut: str) -> None:
+        """
+        Raised when SUT is restarting.
+        :param SUT: name of the SUT
+        :type sut: str
+        """
+        pass
+
     def sut_stop(self, sut: str) -> None:
         """
         Raised when SUT has stopped.

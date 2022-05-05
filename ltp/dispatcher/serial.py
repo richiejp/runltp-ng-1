@@ -5,9 +5,12 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
+import logging
 import os
 import time
+from ltp import LTPException
 from ltp.channel import Channel
+from ltp.channel.base import ChannelTimeoutError
 from ltp.metadata import Suite
 from ltp.metadata import Test
 from ltp.metadata import RuntestMetadata
@@ -16,6 +19,12 @@ from ltp.results import TestResults
 from .base import Dispatcher
 from .base import DispatcherError
 from .base import SuiteTimeoutError
+
+
+class KernelCrashedError(LTPException):
+    """
+    Raised wen kernel has crashed.
+    """
 
 
 class SerialDispatcher(Dispatcher):
@@ -38,6 +47,7 @@ class SerialDispatcher(Dispatcher):
         :param test_timeout: timeout for single suite. Default: 3600
         :type test_timeout: int
         """
+        self._logger = logging.getLogger("ltp.dispatcher.serial")
         self._ltpdir = kwargs.get("ltpdir", None)
         self._tmpdir = kwargs.get("tmpdir", None)
         self._sut = kwargs.get("sut", None)
@@ -96,6 +106,8 @@ class SerialDispatcher(Dispatcher):
         return self._is_running
 
     def stop(self, timeout: int = 30) -> None:
+        self._logger.info("Stopping dispatcher")
+
         self._stop = True
 
         if self.is_running:
@@ -107,29 +119,98 @@ class SerialDispatcher(Dispatcher):
                 if time.time() - start_t >= secs:
                     raise DispatcherError("Dispatcher timed out during stop")
 
+        self._logger.info("Dispatcher topped")
+
+    def _reboot_sut(self) -> None:
+        """
+        This method reboot SUT if needed, for example, after a Kernel panic.
+        """
+        self._logger.info("Rebooting SUT")
+        self._events.sut_restart(self._sut.name)
+
+        def _mystdout_line(line: str) -> None:
+            self._events.sut_stdout_line(self._sut.name, line)
+
+        self._sut.force_stop()
+        self._sut.communicate(stdout_callback=_mystdout_line)
+
+        self._logger.info("SUT rebooted")
+
     def _run_test(self, test: Test, env: dict) -> TestResults:
         """
         Run a single test and return the test results.
         """
+        self._logger.info("Running test %s", test.name)
+        self._logger.debug(test)
+
         self._events.test_started(test)
 
         args = " ".join(test.arguments)
         cmd = f"{test.command} {args}"
 
-        # wrapper around stdout callback
-        def _mystdout_line(line):
-            self._events.test_stdout_line(test, line)
+        test_data = None
+        stdout_crash = []
 
-        test_data = self._sut.channel.run_cmd(
-            cmd,
-            timeout=self._test_timeout,
-            cwd=self._ltpdir,
-            env=env,
-            stdout_callback=_mystdout_line)
+        try:
+            # wrapper around stdout callback
+            def _mystdout_line(line):
+                self._events.test_stdout_line(test, line)
+
+                # kernel panic message comes out from stdout
+                if "Kernel panic" in line:
+                    self._logger.info("Detected Kernel Panic")
+                    stdout_crash.append(line)
+
+                if stdout_crash:
+                    stdout_crash.append(line)
+
+                    if "Rebooting" in line:
+                        # once we reached Rebooing message,
+                        # we can raise the KernelCrashedError exception
+                        raise KernelCrashedError()
+
+            test_data = self._sut.channel.run_cmd(
+                cmd,
+                timeout=self._test_timeout,
+                cwd=self._ltpdir,
+                env=env,
+                stdout_callback=_mystdout_line)
+        except ChannelTimeoutError as err:
+            raise_err = False
+
+            # check if SUT still replies to commands
+            try:
+                self._sut.channel.run_cmd("test .", timeout=10)
+
+                # nothing happened, so it's probably a test issue
+                raise_err = True
+            except ChannelTimeoutError:
+                # we need to reboot the SUT
+                self._logger.info("SUT is not replying")
+                self._reboot_sut()
+
+            if raise_err:
+                raise err
+        except KernelCrashedError:
+            self._reboot_sut()
+
+            # emulate test reply
+            test_data = {
+                "name": test.name,
+                "command": test.command,
+                "stdout": "\n".join(stdout_crash),
+                "returncode": -1,
+                "exec_time": self._test_timeout,
+                "cwd": self._ltpdir,
+                "env": env
+            }
 
         results = self._get_test_results(test, test_data)
 
         self._events.test_completed(results)
+
+        self._logger.info("Test completed")
+        self._logger.debug(results)
 
         return results
 
@@ -138,6 +219,9 @@ class SerialDispatcher(Dispatcher):
         """
         Run a single testing suite and return suite results.
         """
+        self._logger.info("Running suite %s", suite.name)
+        self._logger.debug(suite)
+
         env = {}
         env["LTPROOT"] = self._ltpdir
         env["LTP_COLORIZE_OUTPUT"] = os.environ.get("LTP_COLORIZE_OUTPUT", "n")
@@ -172,6 +256,8 @@ class SerialDispatcher(Dispatcher):
                         f"{suite.name} suite timed out "
                         f"(timeout={self._suite_timeout})")
 
+            self._logger.info("Reading SUT information")
+
             # create suite results
             distro_str = self._read_sut_info(
                 self._sut.channel,
@@ -194,6 +280,8 @@ class SerialDispatcher(Dispatcher):
                 kernel=kernel_str,
                 arch=arch_str)
         finally:
+            self._logger.info("Storing dmesg information")
+
             # read kernel messages for the current SUT instance
             dmesg_stdout = self._sut.channel.run_cmd("dmesg", timeout=60)
             command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
@@ -202,6 +290,9 @@ class SerialDispatcher(Dispatcher):
 
             if suite_results:
                 self._events.suite_completed(suite_results)
+
+        self._logger.debug(suite_results)
+        self._logger.info("Suite completed")
 
         return suite_results
 

@@ -71,6 +71,9 @@ class SimpleConsoleEvents(Events):
     def sut_stop(self, sut: str) -> None:
         self._print(f"Disconnecting from SUT: {sut}")
 
+    def sut_restart(self, sut: str) -> None:
+        self._print(f"Restarting SUT: {sut}")
+
     def sut_stdout_line(self, _: str, line: str) -> None:
         if self._verbose:
             self._print(line)
