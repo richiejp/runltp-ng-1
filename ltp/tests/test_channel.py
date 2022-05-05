@@ -91,13 +91,13 @@ class _TestDataTransfer:
         start_t = time.time()
         while not transfer_client.is_running:
             time.sleep(0.05)
-            assert time.time() - start_t < 5
+            assert time.time() - start_t < 10
 
         # wait for local file creation before stop
         start_t = time.time()
         while not os.path.isfile(local_path):
             time.sleep(0.05)
-            assert time.time() - start_t < 5
+            assert time.time() - start_t < 60
 
         transfer_client.stop()
         thread.join()

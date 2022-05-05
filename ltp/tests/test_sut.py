@@ -68,14 +68,14 @@ class TestLocalSUT:
         def _threaded():
             start_t = time.time()
             while not sut.channel.is_running:
-                assert time.time() - start_t < 5
+                assert time.time() - start_t < 10
 
-            sut.stop(timeout=4)
+            sut.stop(timeout=10)
 
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        ret = sut.channel.run_cmd("sleep 4", timeout=4)
+        ret = sut.channel.run_cmd("sleep 1", timeout=10)
         thread.join()
 
         assert ret["returncode"] != 0
@@ -95,14 +95,14 @@ class TestLocalSUT:
         def _threaded():
             start_t = time.time()
             while not sut.channel.is_running:
-                assert time.time() - start_t < 5
+                assert time.time() - start_t < 10
 
-            sut.force_stop(timeout=4)
+            sut.force_stop(timeout=10)
 
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        ret = sut.channel.run_cmd("sleep 4", timeout=4)
+        ret = sut.channel.run_cmd("sleep 1", timeout=10)
         thread.join()
 
         assert ret["returncode"] != 0
@@ -221,7 +221,7 @@ class TestQemuSUT:
             def _threaded():
                 start_t = time.time()
                 while not sut.channel.is_running:
-                    assert time.time() - start_t < 5
+                    assert time.time() - start_t < 10
 
                 if force:
                     sut.force_stop(timeout=10)
@@ -231,7 +231,7 @@ class TestQemuSUT:
             thread = threading.Thread(target=_threaded, daemon=True)
             thread.start()
 
-            ret = sut.channel.run_cmd("sleep 4", timeout=10)
+            ret = sut.channel.run_cmd("sleep 1", timeout=10)
             thread.join()
 
             assert ret["returncode"] != 0
