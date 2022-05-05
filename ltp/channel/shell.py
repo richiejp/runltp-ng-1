@@ -12,6 +12,7 @@ import subprocess
 from threading import Timer
 from .base import Channel
 from .base import ChannelError
+from .base import ChannelTimeoutError
 
 
 class ShellChannel(Channel):
@@ -104,9 +105,10 @@ class ShellChannel(Channel):
             stdout = ""
             t_secs = max(timeout, 0)
 
-            if t_secs > 0:
+            if t_secs >= 0:
                 def _threaded():
-                    self._logger.info("Command timed out")
+                    self._logger.info(
+                        "Command timed out after %d seconds", timeout)
                     self._process.kill()
 
                 timer = Timer(t_secs, _threaded)
@@ -136,19 +138,28 @@ class ShellChannel(Channel):
             self._logger.debug("return data=%s", ret)
         except subprocess.TimeoutExpired as err:
             self._process.kill()
-            raise ChannelError from err
+            raise ChannelError(err)
         finally:
             self._process = None
-            if timer:
-                timer.cancel()
-
             self._running = False
+
+            if timer:
+                time.sleep(0.1)
+                if timer.finished.is_set():
+                    raise ChannelTimeoutError(
+                        f"'{command}' command timed out (timeout={timeout})")
+
+                timer.cancel()
 
         self._logger.info("Command executed")
 
         return ret
 
-    def fetch_file(self, target_path: str, local_path: str) -> None:
+    def fetch_file(
+            self,
+            target_path: str,
+            local_path: str,
+            timeout: int = 3600) -> None:
         if not target_path:
             raise ValueError("target path is empty")
 
@@ -163,6 +174,8 @@ class ShellChannel(Channel):
         self._stop = False
 
         try:
+            start_t = time.time()
+
             with open(target_path, 'rb') as ftarget:
                 with open(local_path, 'wb+') as flocal:
                     data = ftarget.read(1024)
@@ -172,6 +185,14 @@ class ShellChannel(Channel):
                     while data != b'' and not self._stop:
                         flocal.write(data)
                         data = ftarget.read(1024)
+
+                        if time.time() - start_t >= timeout:
+                            self._logger.info(
+                                "Transfer timed out after %d seconds", timeout)
+
+                            raise ChannelTimeoutError(
+                                f"Timeout during transfer (timeout={timeout}):"
+                                f" {target_path} -> {local_path}")
         except IOError as err:
             raise ChannelError(err)
         finally:

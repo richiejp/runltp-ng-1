@@ -12,6 +12,7 @@ from ltp.channel import SSHChannel
 from ltp.channel import ChannelError
 from ltp.channel import ShellChannel
 from ltp.channel import SerialChannel
+from ltp.channel import ChannelTimeoutError
 
 TEST_SSH_PASSWORD = os.environ.get("TEST_SSH_PASSWORD", None)
 
@@ -47,19 +48,22 @@ class _TestDataTransfer:
         """
         Test fetch_file method.
         """
-        local_path = tmpdir / "local_file"
-        target_path = tmpdir / "target_file"
-        target_path.write("runltp-ng tests")
-
-        target = str(target_path)
-        local = str(local_path)
-
         transfer_client.start()
-        transfer_client.fetch_file(target, local)
-        transfer_client.stop()
+        try:
+            for i in range(0, 5):
+                local_path = tmpdir / f"local_file{i}"
+                target_path = tmpdir / f"target_file{i}"
+                target_path.write("runltp-ng tests")
 
-        assert os.path.isfile(local)
-        assert open(target, 'r').read() == "runltp-ng tests"
+                target = str(target_path)
+                local = str(local_path)
+
+                transfer_client.fetch_file(target, local)
+
+                assert os.path.isfile(local)
+                assert open(target, 'r').read() == "runltp-ng tests"
+        finally:
+            transfer_client.stop()
 
     def test_stop_fetch_file(self, tmpdir, transfer_client):
         """
@@ -102,6 +106,26 @@ class _TestDataTransfer:
         local_size = os.stat(local).st_size
 
         assert target_size != local_size
+
+    def test_fetch_file_timeout(self, tmpdir, transfer_client):
+        """
+        Test stop method when running fetch_file.
+        """
+        local_path = tmpdir / "local_file"
+        target_path = tmpdir / "target_file"
+
+        target = str(target_path)
+        local = str(local_path)
+
+        # create a big file to have enough IO traffic and slow
+        # down fetch_file() method
+        with open(target, 'wb') as ftarget:
+            ftarget.seek(1*1024*1024*1024-1)
+            ftarget.write(b'\0')
+
+        with pytest.raises(ChannelTimeoutError):
+            transfer_client.start()
+            transfer_client.fetch_file(target, local, timeout=1)
 
 
 @pytest.mark.usefixtures("ssh_server")
@@ -349,6 +373,21 @@ class TestSSHChannel(_TestDataTransfer):
         client.stop()
         thread.join()
 
+    def test_run_cmd_timeout(self, config):
+        """
+        Test run_cmd when going in timeout.
+        """
+        client = SSHChannel(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+        client.start()
+
+        with pytest.raises(ChannelTimeoutError):
+            client.run_cmd("sleep 4", timeout=1)
+
     @pytest.mark.skipif(TEST_SSH_PASSWORD is None, reason="Empty SSH password")
     def test_connection_user_password(self, tmpdir, config):
         """
@@ -413,14 +452,9 @@ class TestShellChannel(_TestDataTransfer):
         """
         Test run_cmd method when timeout occurs.
         """
-        ret = ShellChannel().run_cmd("sleep 10", timeout=0.1)
-        assert ret["command"] == "sleep 10"
-        assert ret["returncode"] == -signal.SIGKILL
-        assert ret["stdout"] == ""
-        assert ret["timeout"] == 0.1
-        assert ret["exec_time"] > 0
-        assert ret["cwd"] is None
-        assert ret["env"] is None
+        channel = ShellChannel()
+        with pytest.raises(ChannelTimeoutError):
+            channel.run_cmd("sleep 10", timeout=0.1)
 
     def test_run_cmd_cwd(self, tmpdir):
         """
@@ -528,10 +562,60 @@ class TestShellChannel(_TestDataTransfer):
         assert ret["env"] is None
 
 
-class TestSerialChannel:
+class TestSerialChannel(_TestDataTransfer):
     """
     Test SerialChannel class.
     """
+
+    @pytest.fixture
+    def transfer_client(self, tmpdir):
+        transport_dev = tmpdir / "ttyS0"
+        transport_dev.write("")
+
+        transport_path = tmpdir / "transport.bin"
+        transport_path.write("")
+
+        target = tmpdir / "target"
+        target.write("")
+
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
+
+        mytarget = open(target, "r+")
+
+        def _emulate_shell(cmd):
+            """
+            Simple mock that gets command, execute it and write into target
+            file. This function overrides TextIOWrapper::write method.
+            """
+            if not cmd:
+                raise ValueError("command is empty")
+
+            with open(target, 'a+') as ftarget:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    shell=True,
+                    env=env,
+                    cwd=cwd)
+
+                stdout = proc.communicate()[0]
+                ftarget.write(stdout.decode("utf-8"))
+
+        runner = SerialChannel(
+            stdin=mytarget,
+            stdout=mytarget,
+            transport_dev=str(transport_dev),
+            transport_path=str(transport_path))
+        runner.start()
+
+        runner._stdin.write = mock.MagicMock()
+        runner._stdin.write.side_effect = _emulate_shell
+
+        yield runner
+
+        mytarget.close()
 
     def test_init(self, tmpdir):
         """
@@ -575,11 +659,11 @@ class TestSerialChannel:
         """
         Test run_cmd method.
         """
-        transport_dev = tmpdir / "ttyS0"
-        transport_dev.write("")
-
         transport_path = tmpdir / "transport.bin"
         transport_path.write("")
+
+        transport_dev = os.path.join(str(tmpdir), "ttyS0")
+        os.symlink(str(transport_path), transport_dev)
 
         target = tmpdir / "target"
         target.write("")
@@ -588,8 +672,6 @@ class TestSerialChannel:
         cwd = str(tmpdir)
 
         with open(target, "r+") as mytarget:
-            data = None
-
             def _emulate_shell(cmd):
                 """
                 Simple mock that gets command, execute it and write into target
@@ -615,6 +697,7 @@ class TestSerialChannel:
                 stdout=mytarget,
                 transport_dev=str(transport_dev),
                 transport_path=str(transport_path))
+
             runner.start()
 
             runner._stdin.write = mock.MagicMock()
@@ -656,80 +739,37 @@ class TestSerialChannel:
                 transport_path=str(transport_path))
             runner.start()
 
-            # we are not handling the command, so we will run out of time
-            with pytest.raises(ChannelError):
-                runner.run_cmd("echo 'this-is-not-a-test'", timeout=0.01)
+            with pytest.raises(ChannelTimeoutError):
+                runner.run_cmd("sleep 1", timeout=0.5)
 
-    def test_stop_run_cmd(self, tmpdir):
+    def test_stop_run_cmd(self, tmpdir, transfer_client):
         """
         Test run_cmd method when it's stopped.
         """
-        transport_dev = tmpdir / "ttyS0"
-        transport_dev.write("")
+        def _threaded():
+            start_t = time.time()
+            while not transfer_client.is_running:
+                assert time.time() - start_t < 4
 
-        transport_path = tmpdir / "transport.bin"
-        transport_path.write("")
+            transfer_client.stop()
 
-        target = tmpdir / "target"
-        target.write("")
+        thread = threading.Thread(target=_threaded, daemon=True)
+        thread.start()
 
         env = {"MYVAR": "hello"}
         cwd = str(tmpdir)
 
-        with open(target, "r+") as mytarget:
-            data = None
+        data = transfer_client.run_cmd(
+            "sleep 2",
+            timeout=4,
+            env=env,
+            cwd=cwd)
 
-            def _emulate_shell(cmd):
-                """
-                Simple mock that gets command, execute it and write into target
-                file. This function overrides TextIOWrapper::write method.
-                """
-                if not cmd:
-                    raise ValueError("command is empty")
+        thread.join()
 
-                with open(target, 'a+') as ftarget:
-                    proc = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        shell=True,
-                        env=env,
-                        cwd=cwd)
-
-                    stdout = proc.communicate()[0]
-                    ftarget.write(stdout.decode("utf-8"))
-
-            runner = SerialChannel(
-                stdin=mytarget,
-                stdout=mytarget,
-                transport_dev=str(transport_dev),
-                transport_path=str(transport_path))
-            runner.start()
-
-            runner._stdin.write = mock.MagicMock()
-            runner._stdin.write.side_effect = _emulate_shell
-
-            def _threaded():
-                start_t = time.time()
-                while not runner.is_running:
-                    assert time.time() - start_t < 4
-
-                runner.stop()
-
-            thread = threading.Thread(target=_threaded, daemon=True)
-            thread.start()
-
-            data = runner.run_cmd(
-                "sleep 2",
-                timeout=4,
-                env=env,
-                cwd=cwd)
-
-            thread.join()
-
-            assert data["command"] == "sleep 2"
-            assert data["returncode"] == signal.SIGTERM
-            assert data["stdout"] == ""
-            assert data["exec_time"] > 0
-            assert data["env"] == env
-            assert data["cwd"] == cwd
+        assert data["command"] == "sleep 2"
+        assert data["returncode"] == signal.SIGTERM
+        assert data["stdout"] == ""
+        assert data["exec_time"] > 0
+        assert data["env"] == env
+        assert data["cwd"] == cwd

@@ -14,6 +14,7 @@ import secrets
 import logging
 from .base import Channel
 from .base import ChannelError
+from .base import ChannelTimeoutError
 
 
 class SerialChannel(Channel):
@@ -30,7 +31,7 @@ class SerialChannel(Channel):
         :type stdin: IO
         :param stdout: standard output file handler
         :type stdout: IO
-        :param transport_dev: transport device name
+        :param transport_dev: transport device path
         :type transport_dev: str
         :param transport_path: transport file path
         :type transport_path: str
@@ -115,7 +116,9 @@ class SerialChannel(Channel):
         # to send CTRL+C to command via serial port
         while True:
             if 0 < t_secs <= time.time() - t_start:
-                raise ChannelError("Command timed out")
+                self._logger.info("'%s' command timed out", cmd.rsplit())
+                raise ChannelTimeoutError(
+                    f"'{cmd.rstrip()}' command timed out (timeout={timeout})")
 
             line = self._stdout.readline()
             if not line:
@@ -198,30 +201,57 @@ class SerialChannel(Channel):
 
         return ret
 
-    def fetch_file(self, target_path: str, local_path: str) -> None:
+    def fetch_file(
+            self,
+            target_path: str,
+            local_path: str,
+            timeout: int = 3600) -> None:
+        if not target_path:
+            raise ValueError("target path is empty")
+
+        if not local_path:
+            raise ValueError("local path is empty")
+
         self._logger.info("Downloading: %s -> %s", target_path, local_path)
         self._stop = False
         self._running = True
 
-        trans_dev = f"/dev/{self._transport_dev}"
-
         try:
-            ret = self.run_cmd(f"cat {target_path} > {trans_dev}")
+            ret = self.run_cmd(
+                f"cat {target_path} > {self._transport_dev}",
+                timeout=timeout)
+
             if ret["returncode"] not in [0, signal.SIGTERM]:
                 stdout = ret["stdout"]
-                raise ChannelError(f"Can't send file to {trans_dev}: {stdout}")
+                raise ChannelError(
+                    f"Can't send file to {self._transport_dev}: {stdout}")
 
             if self._stop:
                 return
 
             # read back data and send it to the local file path
+            file_size = os.path.getsize(self._transport_path)
+            start_t = time.time()
+
             with open(self._transport_path, "rb") as transport:
-                data = transport.read()[self._last_pos:]
-
-                self._last_pos = transport.tell()
-
                 with open(local_path, "wb") as flocal:
-                    flocal.write(data)
+                    while not self._stop and self._last_pos < file_size:
+                        if time.time() - start_t >= timeout:
+                            self._logger.info(
+                                "Transfer timed out after %d seconds", timeout)
+
+                            raise ChannelTimeoutError(
+                                f"Timeout during transfer (timeout={timeout}):"
+                                f" {target_path} -> {local_path}")
+
+                        time.sleep(0.05)
+
+                        transport.seek(self._last_pos)
+                        data = transport.read(4096)
+
+                        self._last_pos = transport.tell()
+
+                        flocal.write(data)
 
             self._logger.info("File downloaded")
         finally:

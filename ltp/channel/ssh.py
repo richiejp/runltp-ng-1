@@ -9,8 +9,10 @@ import os
 import time
 import logging
 import socket
+from threading import Timer
 from .base import Channel
 from .base import ChannelError
+from .base import ChannelTimeoutError
 
 try:
     from paramiko import SSHClient
@@ -193,6 +195,8 @@ class SSHChannel(SSHBase, Channel):
             self._running = True
 
             while True:
+                time.sleep(0.05)
+
                 line = stdout.readline()
                 if not line:
                     break
@@ -206,7 +210,14 @@ class SSHChannel(SSHBase, Channel):
             t_end = time.time() - t_start
             retcode = stdout.channel.recv_exit_status()
         except SSHException as err:
-            raise ChannelError(err)
+            if "Timeout" in str(err):
+                raise ChannelTimeoutError(
+                    f"'{command}' command timed out (timeout={timeout})")
+            else:
+                raise ChannelError(err)
+        except socket.timeout as err:
+            raise ChannelTimeoutError(
+                f"'{command}' command timed out (timeout={timeout})")
         except FileNotFoundError as err:
             # key not found
             raise ChannelError(err)
@@ -228,7 +239,11 @@ class SSHChannel(SSHBase, Channel):
 
         return ret
 
-    def fetch_file(self, target_path: str, local_path: str) -> None:
+    def fetch_file(
+            self,
+            target_path: str,
+            local_path: str,
+            timeout: int = 3600) -> None:
         if not target_path:
             raise ValueError("target path is empty")
 
@@ -239,20 +254,36 @@ class SSHChannel(SSHBase, Channel):
 
         self._logger.info("Transfer file: %s -> %s", target_path, local_path)
 
+        def _threaded():
+            self._logger.info("Command timed out after %d seconds", timeout)
+            self.force_stop()
+
+        secs_t = max(timeout, 0)
+        timer = Timer(secs_t, _threaded)
+
         try:
             with SCPClient(self._client.get_transport()) as scp:
                 self._running = True
 
-                try:
-                    scp.get(target_path, local_path=local_path)
-                except (SCPException, SSHException, EOFError) as err:
-                    if self._stop and scp.channel.closed:
-                        return
-                    raise ChannelError(err)
+                timer.start()
+
+                scp.get(target_path, local_path=local_path)
+        except (SCPException, SSHException, EOFError) as err:
+            if not self._stop:
+                raise ChannelError(err)
         except NameError:
             raise ChannelError("scp package is not installed")
         finally:
             self._stop = False
             self._running = False
+
+            time.sleep(0.1)
+
+            if timer.finished.is_set():
+                raise ChannelTimeoutError(
+                    f"Timeout during transfer (timeout={timeout}): "
+                    f"{target_path} -> {local_path}")
+
+            timer.cancel()
 
         self._logger.info("File transfer completed")

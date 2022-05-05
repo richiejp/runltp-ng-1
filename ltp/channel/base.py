@@ -15,6 +15,12 @@ class ChannelError(LTPException):
     """
 
 
+class ChannelTimeoutError(LTPException):
+    """
+    Raised when execution or data transfer reaches a timeout.
+    """
+
+
 class Channel:
     """
     Channel permits to execute commands on target and to transfer data between
@@ -72,8 +78,7 @@ class Channel:
         """
         Run a command on target.
         :param command: command to execute
-        :param timeout: seconds before raising an exception. If 0, no timeout
-            will be applied. Default is 3600.
+        :param timeout: timeout before stopping execution. Default is 3600
         :type timeout: int
         :param cwd: current working directory
         :type cwd: str
@@ -98,7 +103,11 @@ class Channel:
         """
         raise NotImplementedError()
 
-    def fetch_file(self, target_path: str, local_path: str) -> None:
+    def fetch_file(
+            self,
+            target_path: str,
+            local_path: str,
+            timeout: int = 3600) -> None:
         """
         Fetch file from target path and download it in the specified
         local path.
@@ -106,5 +115,7 @@ class Channel:
         :type target_path: str
         :param local_path: path of the downloaded file on local host
         :type local_path: str
+        :param timeout: timeout before stopping data transfer. Default is 3600
+        :type timeout: int
         """
         raise NotImplementedError()
