@@ -84,6 +84,26 @@ class Events:
         """
         pass
 
+    def sut_not_responding(self) -> None:
+        """
+        Raised when SUT is not responding during test execution.
+        """
+        pass
+
+    def kernel_panic(self) -> None:
+        """
+        Raised during a kernel panic.
+        """
+        pass
+
+    def kernel_tained(self, message: str) -> None:
+        """
+        Raised when kernel has being recognized as tained.
+        :param message: tained message
+        :type message: str
+        """
+        pass
+
     def suite_download_started(
             self,
             name: str,

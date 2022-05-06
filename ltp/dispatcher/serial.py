@@ -5,9 +5,9 @@
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
-import logging
 import os
 import time
+import logging
 from ltp import LTPException
 from ltp.channel import Channel
 from ltp.channel.base import ChannelTimeoutError
@@ -27,10 +27,37 @@ class KernelCrashedError(LTPException):
     """
 
 
+class KernelTainedError(LTPException):
+    """
+    Raised wen kernel has tained.
+    """
+
+
 class SerialDispatcher(Dispatcher):
     """
     A dispatcher that serially runs jobs.
     """
+
+    TAINED_MSG = [
+        "proprietary module was loaded",
+        "module was force loaded",
+        "kernel running on an out of specification system",
+        "module was force unloaded",
+        "processor reported a Machine Check Exception (MCE)",
+        "bad page referenced or some unexpected page flags",
+        "taint requested by userspace application",
+        "kernel died recently, i.e. there was an OOPS or BUG",
+        "ACPI table overridden by user",
+        "kernel issued warning",
+        "staging driver was loaded",
+        "workaround for bug in platform firmware applied",
+        "externally-built (“out-of-tree”) module was loaded",
+        "unsigned module was loaded",
+        "soft lockup occurred",
+        "kernel has been live patched",
+        "auxiliary taint, defined for and used by distros",
+        "kernel was built with the struct randomization plugin"
+    ]
 
     def __init__(self, **kwargs) -> None:
         """
@@ -121,6 +148,34 @@ class SerialDispatcher(Dispatcher):
 
         self._logger.info("Dispatcher topped")
 
+    def _check_tained(self) -> set:
+        """
+        Return tained messages if kernel is tained.
+        """
+        self._logger.info("Checking for tained kernel")
+
+        ret = self._sut.channel.run_cmd(
+            "cat /proc/sys/kernel/tainted",
+            timeout=10)
+
+        if ret["returncode"] != 0:
+            raise DispatcherError("Error reading /proc/sys/kernel/tainted")
+
+        tained_num = len(self.TAINED_MSG)
+
+        code = int(ret["stdout"].rstrip())
+        bits = format(code, f"0{tained_num}b")[::-1]
+
+        messages = []
+        for i in range(0, tained_num):
+            if bits[i] == "1":
+                msg = self.TAINED_MSG[i]
+                messages.append(msg)
+
+        self._logger.info("Tained kernel: %s", messages)
+
+        return code, messages
+
     def _reboot_sut(self) -> None:
         """
         This method reboot SUT if needed, for example, after a Kernel panic.
@@ -136,6 +191,7 @@ class SerialDispatcher(Dispatcher):
 
         self._logger.info("SUT rebooted")
 
+    # pylint: disable=too-many-locals
     def _run_test(self, test: Test, env: dict) -> TestResults:
         """
         Run a single test and return the test results.
@@ -152,6 +208,12 @@ class SerialDispatcher(Dispatcher):
         stdout_crash = []
 
         try:
+            # check for tained kernel status
+            tained_code_before, tained_msg_before = self._check_tained()
+            if tained_msg_before:
+                for msg in tained_msg_before:
+                    self._events.kernel_tained(msg)
+
             # wrapper around stdout callback
             def _mystdout_line(line):
                 self._events.test_stdout_line(test, line)
@@ -159,6 +221,7 @@ class SerialDispatcher(Dispatcher):
                 # kernel panic message comes out from stdout
                 if "Kernel panic" in line:
                     self._logger.info("Detected Kernel Panic")
+                    self._events.kernel_panic()
                     stdout_crash.append(line)
 
                 if stdout_crash:
@@ -175,6 +238,16 @@ class SerialDispatcher(Dispatcher):
                 cwd=self._ltpdir,
                 env=env,
                 stdout_callback=_mystdout_line)
+
+            # check again for tained kernel and if tained status has changed
+            # just raise an exception and reboot the SUT
+            tained_code_after, tained_msg_after = self._check_tained()
+            if tained_code_before != tained_code_after:
+                for msg in tained_msg_after:
+                    self._events.kernel_tained(msg)
+
+                raise KernelTainedError()
+
         except ChannelTimeoutError as err:
             raise_err = False
 
@@ -187,10 +260,13 @@ class SerialDispatcher(Dispatcher):
             except ChannelTimeoutError:
                 # we need to reboot the SUT
                 self._logger.info("SUT is not replying")
+                self._events.sut_not_responding()
                 self._reboot_sut()
 
             if raise_err:
                 raise err
+        except KernelTainedError:
+            self._reboot_sut()
         except KernelCrashedError:
             self._reboot_sut()
 

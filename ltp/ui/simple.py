@@ -28,6 +28,9 @@ class SimpleConsoleEvents(Events):
 
     def __init__(self, verbose: bool = False) -> None:
         self._verbose = verbose
+        self._sut_not_responding = False
+        self._kernel_panic = False
+        self._kernel_tained = None
 
     @staticmethod
     def _print(msg: str, color: str = None, end: str = "\n"):
@@ -69,14 +72,34 @@ class SimpleConsoleEvents(Events):
         self._print(f"Connecting to SUT: {sut}")
 
     def sut_stop(self, sut: str) -> None:
-        self._print(f"Disconnecting from SUT: {sut}")
+        self._print(f"\nDisconnecting from SUT: {sut}")
 
     def sut_restart(self, sut: str) -> None:
-        self._print(f"Restarting SUT: {sut}")
+        self._print(f"\nRestarting SUT: {sut}")
 
     def sut_stdout_line(self, _: str, line: str) -> None:
         if self._verbose:
             self._print(line)
+
+    def sut_not_responding(self) -> None:
+        self._sut_not_responding = True
+
+        # this message will replace ok/fail message when non verbose
+        if not self._verbose:
+            self._print("SUT not responding", color=self.RED)
+
+    def kernel_panic(self) -> None:
+        self._kernel_panic = True
+
+        # this message will replace ok/fail message when non verbose
+        if not self._verbose:
+            self._print("kernel panic", color=self.RED)
+
+    def kernel_tained(self, message: str) -> None:
+        if self._verbose:
+            self._print(f"Kernel tained: {message}", color=self.YELLOW)
+
+        self._kernel_tained = message
 
     def suite_download_started(
             self,
@@ -105,7 +128,7 @@ class SimpleConsoleEvents(Events):
         message += f"Kernel Version: {results.kernel}\n"
         message += f"Machine Architecture: {results.arch}\n"
         message += f"Distro: {results.distro}\n"
-        message += f"Distro Version: {results.distro_ver}\n\n"
+        message += f"Distro Version: {results.distro_ver}\n"
 
         self._print(message)
 
@@ -118,7 +141,14 @@ class SimpleConsoleEvents(Events):
 
     def test_completed(self, results: TestResults) -> None:
         if self._verbose:
+            self._sut_not_responding = False
+            self._kernel_panic = False
+            self._kernel_tained = None
             return
+
+        if not self._verbose:
+            if self._kernel_panic or self._sut_not_responding:
+                return
 
         msg = "pass"
         col = self.GREEN
@@ -133,7 +163,16 @@ class SimpleConsoleEvents(Events):
             msg = "broken"
             col = self.CYAN
 
-        self._print(msg, color=col)
+        if self._kernel_tained:
+            self._print(msg, color=col, end="")
+            self._print(" | ", end="")
+            self._print("kernel tained", color=self.YELLOW)
+        else:
+            self._print(msg, color=col)
+
+        self._sut_not_responding = False
+        self._kernel_panic = False
+        self._kernel_tained = None
 
     def test_stdout_line(self, _: Test, line: str) -> None:
         if self._verbose:
@@ -146,6 +185,8 @@ class SimpleConsoleEvents(Events):
                 col = self.YELLOW
             elif "TCONF" in line:
                 col = self.CYAN
+            elif "Kernel panic" in line:
+                col = self.RED
 
             self._print(line, color=col)
 
