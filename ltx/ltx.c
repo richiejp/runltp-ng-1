@@ -165,6 +165,20 @@ static void ltx_fmt(const struct ltx_pos pos,
 	buf->used++;
 }
 
+__attribute__((warn_unused_result))
+static uint64_t ltx_gettime(void)
+{
+	struct timespec ts;
+
+#ifdef CLOCK_MONOTONIC_RAW
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#else
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+#endif
+
+	return ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
 __attribute__((nonnull))
 static void ltx_log_head(struct ltx_buf *const buf,
 			 const uint8_t table_id,
@@ -175,9 +189,12 @@ static void ltx_log_head(struct ltx_buf *const buf,
 	uint8_t *const head = text - reserved;
 	size_t head_len = 0;
 
-	head[head_len++] = ltx_fixarr(3);
+	head[head_len++] = ltx_fixarr(4);
 	head[head_len++] = ltx_msg_log;
 	head[head_len++] = table_id;
+
+	memcpy(head + head_len, ltx_uint64(ltx_gettime()), sizeof(uint64_t) + 1);
+	head_len += sizeof(uint64_t) + 1;
 
 	if (text_len < 32) {
 		/* fixstr[buf->used] = "...*/
@@ -265,20 +282,6 @@ static int ltx_exp_pos(const struct ltx_pos pos,
 	ltx_log(pos, "Not positive: %s = %d: %s", expr, ret, strerrorname_np(errno));
 
 	exit(1);
-}
-
-__attribute__((warn_unused_result))
-static uint64_t ltx_gettime(void)
-{
-	struct timespec ts;
-
-#ifdef CLOCK_MONOTONIC_RAW
-	LTX_EXP_0(clock_gettime(CLOCK_MONOTONIC_RAW, &ts));
-#else
-	LTX_EXP_0(clock_gettime(CLOCK_MONOTONIC, &ts));
-#endif
-
-	return ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 
 static void ltx_out_q(const uint8_t *const data, const size_t len)
@@ -403,7 +406,6 @@ static int process_exec_msg(const uint8_t args_n,
 
 	if (child) {
 		close(pipefd[1]);
-		dprintf(STDERR_FILENO, "Started %d\n", child);
 		childs[table_id].pid = child;
 		child_pids[table_id] = child;
 		return c;
@@ -521,12 +523,17 @@ static int process_event(const struct epoll_event *const ev)
 				   "PID not found: %d", si[i].ssi_pid);
 
 			ltx_out_q((uint8_t[]){
-					ltx_fixarr(4),
+					ltx_fixarr(5),
 					ltx_msg_result,
-					table_id,
+					table_id
+			}, 3);
+
+			ltx_out_q(ltx_uint64(ltx_gettime()), sizeof(uint64_t) + 1);
+
+			ltx_out_q((uint8_t[]){
 					(uint8_t)si[i].ssi_code,
 					(uint8_t)si[i].ssi_status
-			}, 5);
+			}, 2);
 		}
 	} else if (ev->events & EPOLLHUP || ev->events & EPOLLOUT) {
 		out_buf.used += 32;

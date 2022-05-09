@@ -81,7 +81,7 @@ Pong was sent.
 
 `time`: uint 64
 
-`[1, nanosecs]`
+`[1, time]`
 
 ### Env
 
@@ -111,9 +111,10 @@ omitted. The value for `argv[0]` is extracted from `pathname`.
 Sent from LTX to the host to log child process output.
 
 `table_id`: positive fixint
+`time`: uint 64
 `text`: fixstr | str 8
 
-`[4, table_id, text]`
+`[4, table_id, time, text]`
 
 ### Result
 
@@ -124,7 +125,8 @@ status is the overall test result.
 See `waitid`.
 
 `table_id`:  positive fixint
+`time`: uint 64
 `si_code`: uint 8
 `si_status`: uint 8
 
-`[5, table_id, si_code, si_status]`
+`[5, table_id, time, si_code, si_status]`
