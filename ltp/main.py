@@ -119,6 +119,34 @@ def _sut_config(value: str) -> dict:
         qemu:ram=4G:smp=4:image=/local/vm.qcow2:virtfs=/opt/ltp:password=123
 
     """
+    if value == "help":
+        msg = "--sut option supports the following syntax:\n"
+        msg += "\n\t<SUT>:<param1>=<value1>:<param2>=<value2>:..\n\n"
+        msg += "Supported SUT:\n"
+        msg += "\thost: current machine (default)\n"
+        msg += "\tqemu: Qemu virtual machine\n"
+        msg += "\tssh: SSH server\n"
+        msg += "\nqemu parameters:\n"
+        msg += "\timage: qcow2 image location\n"
+        msg += "\timage_overlay: image copy location\n"
+        msg += "\tpassowrd: root password (default: root)\n"
+        msg += "\tsystem: system architecture (default: x86_64\n"
+        msg += "\tram: RAM of the VM (default: 2G)\n"
+        msg += "\tsmp: number of CPUs (default: 2)\n"
+        msg += "\tserial: type of serial protocol. isa|virtio (default: isa)\n"
+        msg += "\tvirtfs: directory to mount inside VM\n"
+        msg += "\tro_image: path of the image that will exposed as read only\n"
+        msg += "\nssh parameters:\n"
+        msg += "\thost: IP address of the SUT (default: localhost)\n"
+        msg += "\tport: TCP port of the service (default: 22)\n"
+        msg += "\tuser: name of the user (default: root)\n"
+        msg += "\tpassword: user's password\n"
+        msg += "\ttimeout: connection timeout in seconds (default: 10)\n"
+        msg += "\tkey_file: private key location\n"
+        msg += "\nhost parameters are not present.\n"
+
+        return dict(help=msg)
+
     if not value:
         raise argparse.ArgumentTypeError("SUT parameters can't be empty")
 
@@ -148,6 +176,17 @@ def _install_config(value: str) -> dict:
         master:commit=8f308953c60cdd25e372e8c58a3c963ab98be276
 
     """
+    if value == "help":
+        msg = "--install option supports the following syntax:\n"
+        msg += "\n\t<branch>:<param1>=<value1>:<param2>=<value2>:..\n\n"
+        msg += "Default branch is \"master\" and supported parameters are:\n"
+        msg += "\tcommit: SHA commit\n"
+        msg += "\trepo: repository location\n"
+        msg += "\tm32: install 32bit packages. Can be 0 or 1 (optional)\n"
+        msg += "\tinstall_dir: LTP install directory (default: /opt/ltp)\n"
+
+        return dict(help=msg)
+
     if not value:
         raise argparse.ArgumentTypeError("Install parameters can't be empty")
 
@@ -188,6 +227,14 @@ def _ltp_run(parser: ArgumentParser, args: Namespace) -> None:
     """
     Handle runltp-ng command options.
     """
+    if args.sut and "help" in args.sut:
+        print(args.sut["help"])
+        return
+
+    if args.install and "help" in args.install:
+        print(args.install["help"])
+        return
+
     if args.json_report and os.path.exists(args.json_report):
         parser.error(f"JSON report file already exists: {args.json_report}")
 
