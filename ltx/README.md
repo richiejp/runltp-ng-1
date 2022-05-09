@@ -110,7 +110,7 @@ omitted. The value for `argv[0]` is extracted from `pathname`.
 
 Sent from LTX to the host to log child process output.
 
-`table_id`: positive fixint
+`table_id`: positive fixint | nil
 `time`: uint 64
 `text`: fixstr | str 8
 
@@ -130,3 +130,28 @@ See `waitid`.
 `si_status`: uint 8
 
 `[5, table_id, time, si_code, si_status]`
+
+### Get File
+
+Sent to LTX; starts a file transfer from LTX to the host. It's not
+likely to work with large files and will block LTX while the transfer
+is in progress. LTX will respond with a single data message.
+
+`path`: fixstr | str 8
+
+`[6, path]`
+
+### Set File
+
+Sent to LTX; will save the contained data to the path specified.
+
+`path`: fixstr | str 8
+`data`: bin 8 | bin 16 | bin 32
+
+`[7, path, data]`
+
+### Data
+
+`data`: bin 8 | bin 16 | bin 32
+
+`[8, data]`
