@@ -19,7 +19,7 @@ from ltp.install import InstallerError
 from ltp.results import SuiteResults
 from ltp.results import JSONExporter
 from ltp.sut import SUT
-from ltp.sut import LocalSUT
+from ltp.sut import HostSUT
 from ltp.sut import SSHSUT
 from ltp.sut import QemuSUT
 from ltp.ui import SimpleConsoleEvents
@@ -268,7 +268,7 @@ class Session:
         elif sut_name == 'ssh':
             sut = SSHSUT(**config)
         else:
-            sut = LocalSUT()
+            sut = HostSUT()
 
         self._events.sut_start(sut.name)
 

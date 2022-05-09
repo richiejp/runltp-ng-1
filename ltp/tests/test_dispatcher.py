@@ -6,7 +6,7 @@ from ltp.channel.base import ChannelTimeoutError
 from ltp.common.events import Events
 from ltp.dispatcher import SerialDispatcher
 from ltp.dispatcher import SuiteTimeoutError
-from ltp.sut import LocalSUT
+from ltp.sut import HostSUT
 
 
 class DummyEvents(Events):
@@ -24,7 +24,7 @@ class TestSerialDispatcher:
         """
         Test constructor with bad arguments.
         """
-        sut = LocalSUT()
+        sut = HostSUT()
 
         with pytest.raises(ValueError):
             SerialDispatcher(
@@ -59,7 +59,7 @@ class TestSerialDispatcher:
         """
         Test exec_suites() method with bad arguments.
         """
-        sut = LocalSUT()
+        sut = HostSUT()
         dispatcher = SerialDispatcher(
             tmpdir=str(tmpdir),
             ltpdir=str(tmpdir),
@@ -82,7 +82,7 @@ class TestSerialDispatcher:
         """
         Test exec_suites() method.
         """
-        sut = LocalSUT()
+        sut = HostSUT()
         dispatcher = SerialDispatcher(
             tmpdir=str(tmpdir),
             ltpdir=str(tmpdir),
@@ -127,7 +127,7 @@ class TestSerialDispatcher:
         suitefile = root.join("sleepsuite")
         suitefile.write("sleep sleep 2")
 
-        sut = LocalSUT()
+        sut = HostSUT()
         dispatcher = SerialDispatcher(
             tmpdir=str(tmpdir),
             ltpdir=str(tmpdir),
@@ -157,7 +157,7 @@ class TestSerialDispatcher:
         suitefile = root.join("sleepsuite")
         suitefile.write("sleep sleep 2")
 
-        sut = LocalSUT()
+        sut = HostSUT()
         dispatcher = SerialDispatcher(
             tmpdir=str(tmpdir),
             ltpdir=str(tmpdir),

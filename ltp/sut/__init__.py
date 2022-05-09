@@ -7,14 +7,14 @@
 """
 from .base import SUT
 from .base import SUTError
-from .local import LocalSUT
+from .host import HostSUT
 from .qemu import QemuSUT
 from .ssh import SSHSUT
 
 __all__ = [
     "SUT",
     "SUTError",
-    "LocalSUT",
+    "HostSUT",
     "QemuSUT",
     "SSHSUT",
 ]

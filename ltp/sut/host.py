@@ -1,7 +1,7 @@
 """
 .. module:: local
     :platform: Linux
-    :synopsis: module containing SUT definition for local testing execution
+    :synopsis: module containing SUT definition for host testing execution
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
@@ -11,9 +11,9 @@ from .base import SUT
 from .base import SUTError
 
 
-class LocalSUT(SUT):
+class HostSUT(SUT):
     """
-    Local SUT implementation for host testing.
+    SUT implementation for host testing.
     """
 
     def __init__(self) -> None:

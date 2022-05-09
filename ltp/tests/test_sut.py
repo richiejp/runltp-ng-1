@@ -5,7 +5,7 @@ import os
 import time
 import threading
 import pytest
-from ltp.sut import LocalSUT
+from ltp.sut import HostSUT
 from ltp.sut import QemuSUT
 from ltp.sut import SSHSUT
 from ltp.sut.base import SUTError
@@ -14,16 +14,16 @@ TEST_QEMU_IMAGE = os.environ.get("TEST_QEMU_IMAGE", None)
 TEST_QEMU_PASSWORD = os.environ.get("TEST_QEMU_PASSWORD", None)
 
 
-class TestLocalSUT:
+class TestHostSUT:
     """
-    Test LocalSUT implementation.
+    Test HostSUT implementation.
     """
 
     def test_communicate(self):
         """
         Test communicate method.
         """
-        sut = LocalSUT()
+        sut = HostSUT()
         for i in range(0, 10):
             sut.communicate()
             sut.stop()
@@ -38,7 +38,7 @@ class TestLocalSUT:
         Test communicate method and use channel to run a command
         multiple times.
         """
-        sut = LocalSUT()
+        sut = HostSUT()
         sut.communicate()
 
         assert sut.channel
@@ -60,7 +60,7 @@ class TestLocalSUT:
         tmp = tmpdir / "tmp"
         tmp.mkdir()
 
-        sut = LocalSUT()
+        sut = HostSUT()
         sut.communicate()
 
         assert sut.channel is not None
@@ -87,7 +87,7 @@ class TestLocalSUT:
         tmp = tmpdir / "tmp"
         tmp.mkdir()
 
-        sut = LocalSUT()
+        sut = HostSUT()
         sut.communicate()
 
         assert sut.channel is not None
