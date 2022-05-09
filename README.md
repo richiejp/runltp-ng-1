@@ -54,54 +54,8 @@ Every session has a temporary directory which can be found in
 called `latest`, pointing to the latest session's temporary directory, and the
 application will rotate over 5 sessions.
 
-Options parameters
-==================
-
-Each option has parameters which can be used to customize running behaviour.
-Their syntax is `--option=param0:key1=param1:key2=param2`.
-
-Install option
---------------
-
-The `--install` option has branch name as the first parameter and then it
-uses the following parameters to customize installation:
-- **commit**: commit hash
-- **repo**: repository location
-- **m32**: uses 32bit dependences. It can be 0 or 1
-- **install_dir**: LTP install directory
-
-For example, `--install=master:commit=0f67c9851a9043d0ad68cef4648d103ba7908480`.
-
-SUT option
-----------
-
-The `--sut` option has different parameters according with the first parameter
-that is used. That's the name of the SUT we are going to use. Currently,
-**host**, **qemu** and **ssh** are supported and they have the following
-parameters:
-
-**qemu** parameters:
-- **image**: qcow2 image location
-- **image_overlay**: copy image location
-- **password**: root password (default: root)
-- **system**: system architecture (default: x86_64)
-- **ram**: RAM of the VM with qemu syntax (default: 2G)
-- **smp**: number of CPUs (default: 2)
-- **serial**: type of serial communication: isa or virtio (default: isa)
-- **virtfs**: directory to mount inside VM
-- **ro_image**: path to an image which will be exposed as read only
-
-For example, `--sut=qemu:image=image.qcow2:smp=12:ram=10G:serial=virtio`.
-
-**ssh** parameters:
-- **host**: IP address or hostname of the SUT (default: localhost)
-- **port**: TCP port of the service (default: 22)
-- **user**: name of the user (default: root)
-- **password**: user's password
-- **timeout**: connection timeout is seconds (default: 10)
-- **key_file**: private key location
-
-For example, `--sut=ssh:host=10.0.10.1:port=2222:user=gigi:password=1234`.
+Please use `--install help` and `--sut help` to see how to configure SUT and
+install parameters.
 
 Installation
 ============
