@@ -10,7 +10,7 @@ import time
 import logging
 from ltp import LTPException
 from ltp.channel import Channel
-from ltp.channel.base import ChannelTimeoutError
+from ltp.channel import ChannelTimeoutError
 from ltp.metadata import Suite
 from ltp.metadata import Test
 from ltp.metadata import RuntestMetadata

@@ -2,7 +2,7 @@
 Unit tests for dispatcher implementations.
 """
 import pytest
-from ltp.channel.base import ChannelTimeoutError
+from ltp.channel import ChannelTimeoutError
 from ltp.common.events import Events
 from ltp.dispatcher import SerialDispatcher
 from ltp.dispatcher import SuiteTimeoutError

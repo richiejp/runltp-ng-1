@@ -12,7 +12,7 @@ import pathlib
 import tempfile
 import logging
 from ltp import LTPException
-from ltp.channel.base import ChannelError
+from ltp.channel import ChannelError
 from ltp.install import INSTALLERS
 from ltp.install import Installer
 from ltp.install import InstallerError

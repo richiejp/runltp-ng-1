@@ -8,7 +8,7 @@ import pytest
 from ltp.sut import HostSUT
 from ltp.sut import QemuSUT
 from ltp.sut import SSHSUT
-from ltp.sut.base import SUTError
+from ltp.sut import SUTError
 
 TEST_QEMU_IMAGE = os.environ.get("TEST_QEMU_IMAGE", None)
 TEST_QEMU_PASSWORD = os.environ.get("TEST_QEMU_PASSWORD", None)

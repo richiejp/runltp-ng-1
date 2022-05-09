@@ -4,9 +4,9 @@ Unit tests for results package.
 import json
 
 import pytest
-from ltp.metadata.base import Suite, Test
+from ltp.metadata import Suite, Test
 from ltp.results import JSONExporter
-from ltp.results.base import SuiteResults, TestResults
+from ltp.results import SuiteResults, TestResults
 
 
 class TestJSONExporter:
