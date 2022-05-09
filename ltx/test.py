@@ -4,10 +4,12 @@ import time
 import pytest
 import sys
 import os
+import re
 import subprocess as sp
 
-from msgpack import packb, unpackb
+from msgpack import packb, unpackb, Unpacker, OutOfData
 
+start_time = None
 proc = None
 buf = b''
 
@@ -40,6 +42,29 @@ def expect_n_bytes(n):
         buf += read()
 
     buf = buf[n:]
+
+def unpack_next():
+    global buf
+    u = Unpacker()
+    o = None
+
+    u.feed(buf)
+
+    while o == None:
+        try:
+            o = u.unpack()
+        except OutOfData:
+            d = read()
+            buf += d
+            u.feed(d)
+
+    buf = buf[u.tell():]
+
+    return o
+
+def check_time(t):
+    assert(start_time < t)
+    assert(t < time.monotonic_ns())
     
 def send(bs):
     assert proc.stdin.write(bs) == len(bs)
@@ -81,16 +106,23 @@ class TestLtx:
 
     def test_version_nolib(self):
         reopen()
-        expect_exact(b'\x93\x04\xc0\xd9/[ltx.c:main:')
+        expect_exact(b'\x94\x04\xc0\xcf')
+        expect_n_bytes(8)
+        expect_exact(b'\xd9/[ltx.c:main:')
         expect_n_bytes(3)
         expect_exact(b'] Linux Test Executor 0.0.1-dev\n')
 
     def test_version(self):
+        global start_time
         reopen()
-        ver_msg = packb([4, None, "[ltx.c:main:374] Linux Test Executor 0.0.1-dev\n"])
-        expect_exact(ver_msg[:17])
-        expect_n_bytes(3)
-        expect_exact(ver_msg[20:])
+        ver_msg = unpack_next()
+        
+        assert(len(ver_msg) == 4)
+        assert(ver_msg[0] == 4)
+        assert(ver_msg[1] == None)
+        start_time = ver_msg[2]
+        assert(re.match(r'\[ltx.c:main:\d+\] Linux Test Executor 0.0.1-dev',
+                        ver_msg[3]) != None)
 
     def test_ping_nolib(self):
         # Ping: [0]
@@ -103,8 +135,10 @@ class TestLtx:
         # Ping
         send(packb([0]))
         # Pong
-        expect_exact(packb([1, time.monotonic_ns()])[:-8])
-        expect_n_bytes(8)
+        pong = unpack_next()
+        assert(len(pong) == 2)
+        assert(pong[0] == 1)
+        check_time(pong[1])
 
     def test_ping_flood(self):
         pings = packb([[0] for _ in range(2048)])[3:]
@@ -119,6 +153,17 @@ class TestLtx:
 
     def test_exec(self):
         send(packb([3, 0, "/usr/bin/uname"]))
-        expect_exact(packb([4, 0, "Linux\n"]))
-        expect_exact(packb([5, 0, 1, 0]))
+        log = unpack_next()
+        assert(log[0] == 4)
+        assert(log[1] == 0)
+        check_time(log[2])
+        assert(log[3] == "Linux\n")
+
+        res = unpack_next()
+        assert(len(res) == 5)
+        assert(res[0] == 5)
+        assert(res[1] == 0)
+        check_time(res[2])
+        assert(res[3] == 1)
+        assert(res[4] == 0)
         
