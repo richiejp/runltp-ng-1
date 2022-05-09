@@ -129,7 +129,7 @@ def _sut_config(value: str) -> dict:
         msg += "\nqemu parameters:\n"
         msg += "\timage: qcow2 image location\n"
         msg += "\timage_overlay: image copy location\n"
-        msg += "\tpassowrd: root password (default: root)\n"
+        msg += "\tpassword: root password (default: root)\n"
         msg += "\tsystem: system architecture (default: x86_64\n"
         msg += "\tram: RAM of the VM (default: 2G)\n"
         msg += "\tsmp: number of CPUs (default: 2)\n"
