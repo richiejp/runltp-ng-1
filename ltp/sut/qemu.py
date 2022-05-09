@@ -12,7 +12,7 @@ import logging
 import subprocess
 from typing import Any
 from ltp.channel import SerialChannel
-from ltp.channel.base import Channel
+from ltp.channel import Channel
 from .base import SUT
 from .base import SUTError
 
