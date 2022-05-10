@@ -1,3 +1,4 @@
+#include <linux/limits.h>
 #define _GNU_SOURCE
 
 #include <execinfo.h>
@@ -16,6 +17,7 @@
 #include <time.h>
 #include <limits.h>
 
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/uio.h>
@@ -67,25 +69,8 @@ struct ltx_cursor {
 };
 
 struct ltx_str {
-	const size_t len;
-	const char *const data;
-};
-
-enum msgp_fmt {
-	msgp_fixint0 = 0x00,
-	msgp_fixing127 = 0x7f,
-	msgp_fixarray0 = 0x90,
-	msgp_fixarray15 = 0x9f,
-	msgp_fixstr0 = 0xa0,
-	msgp_fixstr31 = 0xbf,
-	msgp_nil = 0xc0,
-	msgp_bin8 = 0xc4,
-	msgp_bin32 = 0xc6,
-	msgp_uint8 = 0xcc,
-	msgp_uint64 = 0xcf,
-	msgp_str8 = 0xd9,
-	msgp_str16 = 0xda,
-	msgp_str32 = 0xdb
+	size_t len;
+	char *const data;
 };
 
 enum ltx_msg_types {
@@ -98,7 +83,62 @@ enum ltx_msg_types {
 	ltx_msg_get_file,
 	ltx_msg_set_file,
 	ltx_msg_data,
-	ltx_msg_max,
+	ltx_msg_max = ltx_msg_data,
+};
+
+enum ltx_kind {
+	ltx_array = ltx_msg_max + 1,
+	ltx_number,
+	ltx_str,
+	ltx_bin,
+	ltx_nil,
+	ltx_end
+};
+
+enum ltx_num_kind {
+	ltx_array_size = ltx_array,
+	ltx_ind_num = ltx_number,
+	ltx_str_size = ltx_str,
+	ltx_bin_size = ltx_bin,
+};
+
+struct ltx_obj {
+	enum ltx_kind kind;
+	union {
+		struct ltx_str str;
+		uint64_t u64;
+	};
+};
+
+#define LTX_NUMBER(n) { .kind = ltx_number, .u64 = n }
+#define LTX_NIL { .kind = ltx_nil, .u64 = 0 }
+#define LTX_BIN(l, d) { .kind = ltx_bin, .str = { .len = l, .data = d } }
+#define LTX_STR(l, d) { .kind = ltx_str, .str = { .len = l, .data = d } }
+#define LTX_END { .kind = ltx_end, .u64 = 0 }
+#define LTX_WRITE_MSG(b, t, ...)		 \
+	ltx_write_msg(b, t, (struct ltx_obj[]){ \
+			__VA_ARGS__		 \
+			, LTX_END		 \
+	})
+
+enum msgp_fmt {
+	msgp_fixint0 = 0x00,
+	msgp_fixing127 = 0x7f,
+	msgp_fixarray0 = 0x90,
+	msgp_fixarray15 = 0x9f,
+	msgp_fixstr0 = 0xa0,
+	msgp_fixstr31 = 0xbf,
+	msgp_nil = 0xc0,
+	msgp_bin8 = 0xc4,
+	msgp_bin32 = 0xc6,
+	msgp_uint8 = 0xcc,
+	msgp_uint16 = 0xcd,
+	msgp_uint32 = 0xce,
+	msgp_uint64 = 0xcf,
+	msgp_str8 = 0xd9,
+	msgp_str16 = 0xda,
+	msgp_str32 = 0xdb,
+	msgp_array16 = 0xdc
 };
 
 enum ltx_ev_source_type {
@@ -113,8 +153,6 @@ struct ltx_ev_source {
 	int fd;
 	pid_t pid;
 };
-
-static const uint8_t ltx_nil = 0xc0;
 
 static struct ltx_ev_source ltx_in = {
 	.type = ltx_ev_io,
@@ -175,6 +213,13 @@ static uint8_t *ltx_buf_end(struct ltx_buf *const self)
 	return ltx_buf_start(self) + self->used;
 }
 
+__attribute__((pure, nonnull))
+static void ltx_buf_push(struct ltx_buf *const self, uint8_t v)
+{
+	ltx_buf_end(self)[0] = v;
+	self->used++;
+}
+
 __attribute__((pure, nonnull, warn_unused_result))
 static size_t ltx_buf_avail(const struct ltx_buf *const self)
 {
@@ -202,6 +247,83 @@ static uint8_t *ltx_cur_take(struct ltx_cursor *const self, size_t len)
 }
 
 __attribute__((nonnull))
+static void ltx_write_number(struct ltx_buf *const buf,
+			     enum ltx_num_kind kind,
+			     const uint64_t n)
+{
+	uint8_t *d = ltx_buf_end(buf);
+	uint8_t h;
+	size_t l = 0;
+
+	switch (kind) {
+	case ltx_array:
+		if (n > 15) {
+			l = 2;
+			h = msgp_array16;
+		} else {
+			h = msgp_fixarray0 + n;
+		}
+		break;
+	case ltx_number:
+		if ((~0ULL << 32) & n) {
+			l = 8;
+			h = msgp_uint64;
+		} else if (0xffff0000 & n) {
+			l = 4;
+			h = msgp_uint32;
+		} else if (0xff00 & n) {
+			l = 2;
+			h = msgp_uint16;
+		} else if (0x80 & n) {
+			l = 1;
+			h = msgp_uint8;
+		} else {
+			h = n;
+		}
+		break;
+	case ltx_str:
+		if (0xffff0000 & n) {
+			l = 4;
+			h = msgp_str32;
+		} else if (0xff00 & n) {
+			l = 2;
+			h = msgp_str16;
+		} else if (n > 31) {
+			l = 1;
+			h = msgp_str8;
+		} else {
+			h = msgp_fixstr0 + n;
+		}
+		break;
+	case ltx_bin:
+		if (0xffffff00 & n) {
+			l = 4;
+			h = msgp_bin32;
+		} else {
+			l = 1;
+			h = msgp_str8;
+		}
+		break;
+	}
+
+	if (l)
+		ltx_buf_push(buf, h);
+
+
+	for (unsigned j = 0; j < l; j++)
+		d[j] = (uint8_t)(n >> (64 - 8*j));
+
+	buf->used += l + 1;
+}
+
+__attribute__((nonnull))
+static void ltx_write_str(struct ltx_buf *const buf, const struct ltx_str *const str)
+{
+	ltx_write_number(buf, ltx_str_size, str->len);
+	memmove(ltx_buf_end(buf), str->data, str->len);
+}
+
+__attribute__((nonnull))
 static void ltx_fmt(const struct ltx_pos pos,
 		    struct ltx_buf *const buf,
 		    const char *const fmt,
@@ -213,6 +335,47 @@ static void ltx_fmt(const struct ltx_pos pos,
 
 	memcpy(ltx_buf_end(buf), "\n\0", 2);
 	buf->used++;
+}
+
+static void ltx_write_obj(struct ltx_buf *const buf,
+			  const struct ltx_obj *const obj)
+{
+	switch (obj->kind) {
+	case ltx_number:
+		ltx_write_number(buf, ltx_ind_num, obj->u64);
+		break;
+	case ltx_str:
+	case ltx_bin:
+		ltx_write_number(buf,
+				 (enum ltx_num_kind)obj->kind, obj->str.len);
+		if (obj->str.data)
+			memmove(ltx_buf_end(buf), obj->str.data, obj->str.len);
+		buf->used += obj->str.len;
+		break;
+	case ltx_nil:
+		ltx_buf_push(buf, msgp_nil);
+		break;
+	case ltx_array:
+	case ltx_end:
+		__builtin_unreachable();
+	}
+}
+
+__attribute__((nonnull))
+static void ltx_write_msg(struct ltx_buf *const buf,
+			  enum ltx_msg_types msg_type,
+			  struct ltx_obj *objs)
+{
+	size_t len = 1;
+
+	for (struct ltx_obj *obj = objs; obj->kind != ltx_end; obj++)
+		len++;
+
+	ltx_write_number(buf, ltx_array_size, len);
+	ltx_buf_push(buf, msg_type);
+
+	for (struct ltx_obj *obj = objs; obj->kind != ltx_end; obj++)
+		ltx_write_obj(buf, obj);
 }
 
 __attribute__((warn_unused_result))
@@ -229,61 +392,31 @@ static uint64_t ltx_gettime(void)
 	return ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 
-__attribute__((nonnull))
-static void ltx_log_head(struct ltx_buf *const buf,
-			 const uint8_t table_id,
-			 const size_t reserved,
-			 const size_t text_len)
-{
-	uint8_t *const text = ltx_buf_end(buf) - text_len;
-	uint8_t *const head = text - reserved;
-	size_t head_len = 0;
-
-	head[head_len++] = ltx_fixarr(4);
-	head[head_len++] = ltx_msg_log;
-	head[head_len++] = table_id;
-
-	memcpy(head + head_len, ltx_uint64(ltx_gettime()), sizeof(uint64_t) + 1);
-	head_len += sizeof(uint64_t) + 1;
-
-	if (text_len < 32) {
-		/* fixstr[buf->used] = "...*/
-		head[head_len++] = msgp_fixstr0 + text_len;
-		memmove(head + head_len, text, text_len);
-	} else if (text_len < 256) {
-		/* str8[buf->used] = "...*/
-		head[head_len++] = msgp_str8;
-		head[head_len++] = text_len;
-		memmove(head + head_len, text, text_len);
-	} else {
-		/* str16[buf->used] = "...*/
-		head[head_len++] = msgp_str16;
-		head[head_len++] = text_len >> 8;
-		head[head_len] = text_len;
-	}
-
-	buf->used -= reserved - head_len;
-}
-
 __attribute__((nonnull, format(printf, 2, 3)))
 static void ltx_log(const struct ltx_pos pos, const char *const fmt, ...)
 {
 	struct ltx_buf msg = { .off = 32, .used = 0 };
 	va_list ap;
 	ssize_t res;
+	const uint8_t *text = ltx_buf_start(&msg);
+	size_t len;
 
 	va_start(ap, fmt);
 	ltx_fmt(pos, &msg, fmt, ap);
 	va_end(ap);
 
-	res = write(STDERR_FILENO, ltx_buf_start(&msg), msg.used);
+	res = write(STDERR_FILENO, text, msg.used);
 
 	if (ltx_pid != getpid())
 		return;
 
 	msg.off = 0;
-	msg.used += 32;
-	ltx_log_head(&msg, ltx_nil, 32, msg.used - 32);
+	len = msg.used;
+	msg.used = 0;
+	LTX_WRITE_MSG(&msg, ltx_msg_log,
+		      LTX_NIL,
+		      LTX_NUMBER(ltx_gettime()),
+		      LTX_STR(len, (char *)text));
 
 	while (msg.used) {
 		res = write(ltx_out.fd, ltx_buf_start(&msg), msg.used);
@@ -332,16 +465,6 @@ static int ltx_exp_pos(const struct ltx_pos pos,
 	ltx_log(pos, "Not positive: %s = %d: %s", expr, ret, strerrorname_np(errno));
 
 	exit(1);
-}
-
-static void ltx_out_q(const uint8_t *const data, const size_t len)
-{
-	ltx_assert(ltx_buf_avail(&out_buf) >= len,
-		   "%zu < %zu", ltx_buf_avail(&out_buf), len);
-
-	memcpy(ltx_buf_end(&out_buf), data, len);
-
-	out_buf.used += len;
 }
 
 static void ltx_epoll_add(struct ltx_ev_source *ev_src, const uint32_t events)
@@ -431,7 +554,7 @@ static struct ltx_str ltx_read_str(struct ltx_cursor *cur)
 
 	return (struct ltx_str) {
 		.len = l,
-		.data = (const char *const)ltx_cur_take(cur, l)
+		.data = (char *)ltx_cur_take(cur, l)
 	};
 
 out_of_data:
@@ -440,8 +563,6 @@ out_of_data:
 		.data = NULL,
 	};
 }
-
-static void ltx_write_str(
 
 static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 {
@@ -461,8 +582,8 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 	if (!path.data)
 		return 0;
 
-	ltx_out_q((uint8_t []){ ltx_fixarr(args_n + 1), ltx_msg_exec }, 2);
-	ltx_out_q((uint8_t *)path.data, path.len);
+	LTX_WRITE_MSG(&out_buf, ltx_msg_exec,
+		      { .kind = ltx_str, .str = path});
 
 	ltx_assert(args_n == 2, "Exec: argsv not implemented");
 
@@ -490,11 +611,28 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 static int process_get_file_msg(struct ltx_cursor *cur)
 {
 	struct ltx_str path = ltx_read_str(cur);
+	struct stat st;
+	char cpath[PATH_MAX];
+	int fd;
 
 	if (path.data == NULL)
 		return 0;
 
-	ltx_out_q((uint8_t []){ ltx_fixarr(2), ltx_msg_get_file, }, 2);
+	LTX_WRITE_MSG(&out_buf, ltx_msg_get_file,
+		      { .kind = ltx_str, .str = path });
+
+	memcpy(cpath, path.data, path.len);
+	cpath[path.len] = '\0';
+	fd = LTX_EXP_FD(open(cpath, O_RDONLY));
+	LTX_EXP_0(fstat(fd, &st));
+
+	ltx_assert(st.st_size < 0xffffffff,
+		   "%s: too large (%ld)", cpath, st.st_size);
+
+	LTX_WRITE_MSG(&out_buf, ltx_msg_data, LTX_BIN(st.st_size, NULL));
+	drain_write_buf();
+
+
 }
 
 static void process_msgs(void)
@@ -506,7 +644,6 @@ static void process_msgs(void)
 
 	while (outer_cur.left > 1) {
 		struct ltx_cursor cur = outer_cur;
-		size_t ret;
 		enum msgp_fmt msg_fmt = ltx_cur_pop(&cur);
 
 		ltx_assert(msg_fmt & msgp_fixarray0,
@@ -522,13 +659,9 @@ static void process_msgs(void)
 				   "Ping: (msg_arr_len = %u) != 1",
 				   msg_arr_len);
 
-			ltx_out_q((uint8_t[]){ ltx_fixarr(1), ltx_msg_ping },
-				  2);
-
-			ltx_out_q((uint8_t[]){ ltx_fixarr(2), ltx_msg_pong },
-				  2);
-			ltx_out_q(ltx_uint64(ltx_gettime()), 9);
-
+			LTX_WRITE_MSG(&out_buf, ltx_msg_ping, LTX_END);
+			LTX_WRITE_MSG(&out_buf, ltx_msg_pong,
+				      LTX_NUMBER(ltx_gettime()));
 			break;
 		case ltx_msg_pong:
 			ltx_assert(!ltx_msg_pong, "Not handled by executor");
@@ -552,7 +685,7 @@ static void process_msgs(void)
 				   "Get File: (msg_arr_len = %u) != 2",
 				   msg_arr_len);
 
-			if (!process_get_file_msg(cur))
+			if (!process_get_file_msg(&cur))
 				goto out;
 		case ltx_msg_set_file:
 			ltx_assert(!ltx_msg_set_file, "Not implemented");
@@ -580,6 +713,7 @@ static int process_event(const struct epoll_event *const ev)
 	struct signalfd_siginfo si[0x7f];
 	ssize_t len, sig_n;
 	uint8_t table_id;
+	uint8_t *log_text;
 
 	if (ev_src->type == ltx_ev_io) {
 		if (ev->events & EPOLLIN)
@@ -610,30 +744,24 @@ static int process_event(const struct epoll_event *const ev)
 			ltx_assert(table_id < 0x7f,
 				   "PID not found: %d", si[i].ssi_pid);
 
-			ltx_out_q((uint8_t[]){
-					ltx_fixarr(5),
-					ltx_msg_result,
-					table_id
-			}, 3);
-
-			ltx_out_q(ltx_uint64(ltx_gettime()), sizeof(uint64_t) + 1);
-
-			ltx_out_q((uint8_t[]){
-					(uint8_t)si[i].ssi_code,
-					(uint8_t)si[i].ssi_status
-			}, 2);
+			LTX_WRITE_MSG(&out_buf, ltx_msg_result,
+				       LTX_NUMBER(table_id),
+				       LTX_NUMBER(ltx_gettime()),
+				       LTX_NUMBER(si[i].ssi_code),
+				       LTX_NUMBER(si[i].ssi_status));
 		}
 	} else if (ev->events & EPOLLHUP || ev->events & EPOLLOUT) {
-		out_buf.used += 32;
+		log_text = ltx_buf_end(&out_buf) + 32;
 		len = LTX_EXP_POS(read(ev_src->fd,
-				       ltx_buf_end(&out_buf),
-				       ltx_min_sz(1024, ltx_buf_avail(&out_buf))));
+				       log_text,
+				       ltx_min_sz(1024, ltx_buf_avail(&out_buf) - 32)));
 
 		if (len) {
-			out_buf.used += len;
-			ltx_log_head(&out_buf, ev_src->table_id, 32, len);
+			LTX_WRITE_MSG(&out_buf, ltx_msg_log,
+				      LTX_NUMBER(ev_src->table_id),
+				      LTX_NUMBER(ltx_gettime()),
+				      LTX_STR(len, (char *)log_text));
 		} else {
-			out_buf.used -= 32;
 			close(ev_src->fd);
 		}
 	}
