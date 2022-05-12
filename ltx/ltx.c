@@ -319,8 +319,11 @@ static void ltx_write_obj(struct ltx_buf *const buf,
 	case ltx_bin:
 		ltx_write_number(buf,
 				 (enum ltx_num_kind)obj->kind, obj->str.len);
-		if (obj->str.data)
-			memmove(ltx_buf_end(buf), obj->str.data, obj->str.len);
+
+		if (!obj->str.data)
+			break;
+
+		memmove(ltx_buf_end(buf), obj->str.data, obj->str.len);
 		buf->used += obj->str.len;
 		break;
 	case ltx_nil:

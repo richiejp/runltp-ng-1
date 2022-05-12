@@ -91,7 +91,7 @@ def run(args):
            stdout=sp.PIPE, stderr=sp.STDOUT,
            check=True)
     
-CFLAGS = '-Wall -Wextra -Werror -fno-omit-frame-pointer -fsanitize=address,undefined'
+CFLAGS = '-Wall -Wextra -Werror -g -fno-omit-frame-pointer -fsanitize=address,undefined'
 CFILES = 'ltx.c -o ltx'
 
 def spawn():
@@ -167,3 +167,15 @@ class TestLtx:
         assert(res[3] == 1)
         assert(res[4] == 0)
         
+    def test_get_file(self, tmp_path):
+        pattern = b'AaXa\x00\x01\x02Zz' * 2048
+        d = tmp_path / 'get_file'
+        d.mkdir()
+        p = d / 'pattern'
+
+        p.write_bytes(pattern)
+        send(packb([6, p.as_posix()]))
+
+        data = unpack_next()
+        assert(data[0] == 8)
+        assert(data[1] == pattern)
