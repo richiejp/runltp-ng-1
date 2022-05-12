@@ -99,7 +99,7 @@ def spawn():
 
 class TestLtx:
     def test_compile_gcc(self):
-        run(f"gcc {CFLAGS} {CFILES}")
+        run(f"gcc {CFLAGS} -fanalyzer {CFILES}")
 
     def test_compile_clang(self):
         run(f"clang {CFLAGS} {CFILES}")

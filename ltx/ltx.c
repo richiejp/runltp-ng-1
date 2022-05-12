@@ -23,6 +23,7 @@
 #include <sys/uio.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
+#include <sys/sendfile.h>
 
 #define VERSION "0.0.1-dev"
 
@@ -182,25 +183,6 @@ static size_t ltx_min_sz(const size_t a, const size_t b)
 	return a < b ? a : b;
 }
 
-__attribute__((const, warn_unused_result))
-static uint8_t ltx_fixarr(const uint8_t len)
-{
-	return 0x90 + len;
-}
-
-__attribute__((warn_unused_result))
-static uint8_t *ltx_uint64(const uint64_t i)
-{
-	static uint8_t buf[9];
-
-	buf[0] = 0xcf;
-
-	for (int j = 1; j < 9; j++)
-		buf[j] = (uint8_t)(i >> (64 - 8*j));
-
-	return buf;
-}
-
 __attribute__((pure, nonnull, warn_unused_result))
 static uint8_t *ltx_buf_start(struct ltx_buf *const self)
 {
@@ -213,7 +195,7 @@ static uint8_t *ltx_buf_end(struct ltx_buf *const self)
 	return ltx_buf_start(self) + self->used;
 }
 
-__attribute__((pure, nonnull))
+__attribute__((nonnull))
 static void ltx_buf_push(struct ltx_buf *const self, uint8_t v)
 {
 	ltx_buf_end(self)[0] = v;
@@ -227,12 +209,14 @@ static size_t ltx_buf_avail(const struct ltx_buf *const self)
 }
 
 __attribute__((nonnull, warn_unused_result))
-static uint8_t ltx_cur_pop(struct ltx_cursor *const self)
+static uint8_t ltx_cur_shift(struct ltx_cursor *const self)
 {
+	const uint8_t c = self->ptr[0];
+
 	self->left--;
 	self->ptr++;
 
-	return self->ptr[0];
+	return c;
 }
 
 __attribute__((nonnull, warn_unused_result))
@@ -251,7 +235,6 @@ static void ltx_write_number(struct ltx_buf *const buf,
 			     enum ltx_num_kind kind,
 			     const uint64_t n)
 {
-	uint8_t *d = ltx_buf_end(buf);
 	uint8_t h;
 	size_t l = 0;
 
@@ -306,21 +289,9 @@ static void ltx_write_number(struct ltx_buf *const buf,
 		break;
 	}
 
-	if (l)
-		ltx_buf_push(buf, h);
-
-
-	for (unsigned j = 0; j < l; j++)
-		d[j] = (uint8_t)(n >> (64 - 8*j));
-
-	buf->used += l + 1;
-}
-
-__attribute__((nonnull))
-static void ltx_write_str(struct ltx_buf *const buf, const struct ltx_str *const str)
-{
-	ltx_write_number(buf, ltx_str_size, str->len);
-	memmove(ltx_buf_end(buf), str->data, str->len);
+	ltx_buf_push(buf, h);
+	for (unsigned j = 9 - l; j < 9; j++)
+		ltx_buf_push(buf, (uint8_t)(n >> (64 - 8*j)));
 }
 
 __attribute__((nonnull))
@@ -532,7 +503,7 @@ __attribute__((nonnull, warn_unused_result))
 static struct ltx_str ltx_read_str(struct ltx_cursor *cur)
 {
 	size_t l = 0, w = 0;
-	enum msgp_fmt fmt = ltx_cur_pop(cur);
+	enum msgp_fmt fmt = ltx_cur_shift(cur);
 
 	switch (fmt) {
 	case msgp_fixstr0 ... msgp_fixstr31:
@@ -571,7 +542,7 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 	pid_t child;
 	int pipefd[2];
 
-	table_id = ltx_cur_pop(cur);
+	table_id = ltx_cur_shift(cur);
 	ltx_assert(table_id < 0x7f, "Exec: (table_id = %u) > 127", table_id);
 
 	if (!cur->left)
@@ -583,6 +554,7 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 		return 0;
 
 	LTX_WRITE_MSG(&out_buf, ltx_msg_exec,
+		      LTX_NUMBER(table_id),
 		      { .kind = ltx_str, .str = path});
 
 	ltx_assert(args_n == 2, "Exec: argsv not implemented");
@@ -630,9 +602,16 @@ static int process_get_file_msg(struct ltx_cursor *cur)
 		   "%s: too large (%ld)", cpath, st.st_size);
 
 	LTX_WRITE_MSG(&out_buf, ltx_msg_data, LTX_BIN(st.st_size, NULL));
+
+	fcntl(ltx_out.fd, F_SETFL, 0);
 	drain_write_buf();
+	const ssize_t len = LTX_EXP_POS(sendfile(ltx_out.fd, fd, NULL, 0x7ffff000));
+	fcntl(ltx_out.fd, F_SETFL, O_NONBLOCK);
 
+	ltx_assert(len == st.st_size, "(len = %zd) != (st.st_size = %ld)",
+		   len, st.st_size);
 
+	return 1;
 }
 
 static void process_msgs(void)
@@ -644,14 +623,14 @@ static void process_msgs(void)
 
 	while (outer_cur.left > 1) {
 		struct ltx_cursor cur = outer_cur;
-		enum msgp_fmt msg_fmt = ltx_cur_pop(&cur);
+		enum msgp_fmt msg_fmt = ltx_cur_shift(&cur);
 
 		ltx_assert(msg_fmt & msgp_fixarray0,
 			   "Message should start with fixarray, not %x",
 			   msg_fmt);
 
 		const uint8_t msg_arr_len = msg_fmt - msgp_fixarray0;
-		const uint8_t msg_type = ltx_cur_pop(&cur);
+		const uint8_t msg_type = ltx_cur_shift(&cur);
 
 		switch (msg_type) {
 		case ltx_msg_ping:
@@ -672,7 +651,7 @@ static void process_msgs(void)
 				   "Exec: (msg_arr_len = %u) < 3",
 				   msg_arr_len);
 
-			if (!process_exec_msg(&cur, msg_arr_len))
+			if (!process_exec_msg(&cur, msg_arr_len - 1))
 				goto out;
 
 			break;
@@ -687,6 +666,7 @@ static void process_msgs(void)
 
 			if (!process_get_file_msg(&cur))
 				goto out;
+			break;
 		case ltx_msg_set_file:
 			ltx_assert(!ltx_msg_set_file, "Not implemented");
 		case ltx_msg_data:
@@ -702,8 +682,9 @@ static void process_msgs(void)
 		if (out_buf.used > BUFSIZ / 4)
 			drain_write_buf();
 	}
-
 out:
+	in_buf.off = in_buf.used - outer_cur.left;
+	in_buf.used = outer_cur.left;
 	memmove(in_buf.data, ltx_buf_start(&in_buf), in_buf.used);
 }
 
