@@ -16,15 +16,15 @@ class IOReader:
     A helper class to read IO buffers.
     """
 
-    def __init__(self, fd: int) -> None:
+    def __init__(self, fdesc: int) -> None:
         """
-        :param fd: file descriptor of the stdout. It can be taken
+        :param fdesc: file descriptor of the stdout. It can be taken
             by using fileno()
-        :type fd: int
+        :type fdesc: int
         """
-        self._fd = fd
+        self._fdesc = fdesc
         self._poller = select.epoll()
-        self._poller.register(self._fd, select.EPOLLIN)
+        self._poller.register(self._fdesc, select.EPOLLIN)
         self._stop_lock = threading.Lock()
         self._read_lock = threading.Lock()
         self._stop = False
@@ -33,14 +33,11 @@ class IOReader:
         """
         Stop reading the poll.
         """
-        if self._poller.closed:
-            return
-
         with self._stop_lock:
             self._stop = True
 
             try:
-                self._poller.unregister(self._fd)
+                self._poller.unregister(self._fdesc)
             except OSError:
                 # proc has been already closed
                 # so file descriptor is not valid
@@ -93,10 +90,10 @@ class IOReader:
                     events = self._poller.poll(1)
 
                     for fdesc, _ in events:
-                        if fdesc != self._fd:
+                        if fdesc != self._fdesc:
                             continue
 
-                        data = os.read(self._fd, 1).decode(
+                        data = os.read(self._fdesc, 1).decode(
                             encoding='utf-8',
                             errors='ignore')
 
