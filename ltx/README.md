@@ -133,9 +133,11 @@ See `waitid`.
 
 ### Get File
 
-Sent to LTX; starts a file transfer from LTX to the host. It's not
-likely to work with large files and will block LTX while the transfer
-is in progress. LTX will respond with a single data message.
+Sent to LTX; starts a file transfer from LTX to the host. LTX will
+respond with a single data message.
+
+Note that this will block LTX while the transfer is in progress. Also
+it's unclear what size of file this can handle.
 
 `path`: fixstr | str 8
 
@@ -144,6 +146,9 @@ is in progress. LTX will respond with a single data message.
 ### Set File
 
 Sent to LTX; will save the contained data to the path specified.
+
+Not that like all messages this is echoed back. Also see Get File
+above.
 
 `path`: fixstr | str 8
 `data`: bin 8 | bin 16 | bin 32

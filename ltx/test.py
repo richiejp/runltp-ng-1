@@ -1,4 +1,4 @@
-#!/usr/bin/pytest-3.9
+#!/usr/bin/pytest-3.9 --timeout=5
 
 import time
 import pytest
@@ -166,6 +166,20 @@ class TestLtx:
         check_time(res[2])
         assert(res[3] == 1)
         assert(res[4] == 0)
+
+    def test_set_file(self, tmp_path):
+        pattern = b'AaXa\x00\x01\x02Zz' * 2048
+        d = tmp_path / 'get_file'
+        d.mkdir()
+        p = d / 'pattern'
+
+        send(packb([7, p.as_posix(), pattern]))
+
+        content = p.read_bytes()
+        assert(content == pattern)
+
+        send(packb([0]))
+        assert(unpack_next()[0] == 1)
         
     def test_get_file(self, tmp_path):
         pattern = b'AaXa\x00\x01\x02Zz' * 2048

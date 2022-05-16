@@ -131,6 +131,7 @@ enum msgp_fmt {
 	msgp_fixstr31 = 0xbf,
 	msgp_nil = 0xc0,
 	msgp_bin8 = 0xc4,
+	msgp_bin16 = 0xc5,
 	msgp_bin32 = 0xc6,
 	msgp_uint8 = 0xcc,
 	msgp_uint16 = 0xcd,
@@ -279,12 +280,15 @@ static void ltx_write_number(struct ltx_buf *const buf,
 		}
 		break;
 	case ltx_bin:
-		if (0xffffff00 & n) {
+		if (0xffff0000 & n) {
 			l = 4;
 			h = msgp_bin32;
+		} else if (0xff00 & n) {
+			l = 2;
+			h = msgp_bin16;
 		} else {
 			l = 1;
-			h = msgp_str8;
+			h = msgp_bin8;
 		}
 		break;
 	}
@@ -503,39 +507,52 @@ static size_t ltx_read_size(struct ltx_cursor *const cur, const size_t len)
 }
 
 __attribute__((nonnull, warn_unused_result))
-static struct ltx_str ltx_read_str(struct ltx_cursor *cur)
+static ssize_t ltx_read_str_size(struct ltx_cursor *const cur)
 {
-	size_t l = 0, w = 0;
-	enum msgp_fmt fmt = ltx_cur_shift(cur);
+	const enum msgp_fmt fmt = ltx_cur_shift(cur);
+	size_t w;
 
 	switch (fmt) {
 	case msgp_fixstr0 ... msgp_fixstr31:
-		l = fmt - msgp_fixstr0;
-		break;
+		return fmt - msgp_fixstr0;
 	case msgp_str8 ... msgp_str32:
 		w = 1 + fmt - msgp_str8;
+		break;
+	case msgp_bin8 ... msgp_bin32:
+		w = 1 + fmt - msgp_bin8;
 		break;
 	default:
 		ltx_assert(0, "Not a string fmt: '%x'", fmt);
 	}
 
 	if (w > cur->left)
-		goto out_of_data;
-	if (w)
-		l = ltx_read_size(cur, w);
-	if (l > cur->left)
-		goto out_of_data;
+		return -1;
+
+	return ltx_read_size(cur, w);
+}
+
+__attribute__((nonnull, warn_unused_result))
+static struct ltx_str ltx_read_str(struct ltx_cursor *cur)
+{
+	const ssize_t l = ltx_read_str_size(cur);
+
+	if (l == -1 || (size_t)l > cur->left) {
+		return (struct ltx_str) {
+			.len = 0,
+			.data = NULL,
+		};
+	}
 
 	return (struct ltx_str) {
 		.len = l,
 		.data = (char *)ltx_cur_take(cur, l)
 	};
+}
 
-out_of_data:
-	return (struct ltx_str) {
-		.len = 0,
-		.data = NULL,
-	};
+static void ltx_to_cstring(struct ltx_str *str, char *cstr)
+{
+	memcpy(cstr, str->data, str->len);
+	cstr[str->len] = '\0';
 }
 
 static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
@@ -577,8 +594,7 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 	LTX_EXP_POS(dup2(pipefd[1], STDERR_FILENO));
 	LTX_EXP_POS(dup2(pipefd[1], STDOUT_FILENO));
 
-	memcpy(cpath, path.data, path.len);
-	cpath[path.len] = '\0';
+	ltx_to_cstring(&path, cpath);
 	LTX_EXP_0(execv(cpath, (char *const[]){ cpath, NULL }));
 	__builtin_unreachable();
 }
@@ -596,12 +612,11 @@ static int process_get_file_msg(struct ltx_cursor *cur)
 	LTX_WRITE_MSG(&out_buf, ltx_msg_get_file,
 		      { .kind = ltx_str, .str = path });
 
-	memcpy(cpath, path.data, path.len);
-	cpath[path.len] = '\0';
+	ltx_to_cstring(&path, cpath);
 	fd = LTX_EXP_FD(open(cpath, O_RDONLY));
 	LTX_EXP_0(fstat(fd, &st));
 
-	ltx_assert(st.st_size < 0xffffffff,
+	ltx_assert(st.st_size < 0x7ffff000,
 		   "%s: too large (%ld)", cpath, st.st_size);
 
 	LTX_WRITE_MSG(&out_buf, ltx_msg_data, LTX_BIN(st.st_size, NULL));
@@ -614,6 +629,58 @@ static int process_get_file_msg(struct ltx_cursor *cur)
 	ltx_assert(len == st.st_size, "(len = %zd) != (st.st_size = %ld)",
 		   len, st.st_size);
 
+	return 1;
+}
+
+static int process_set_file_msg(struct ltx_cursor *cur)
+{
+	struct ltx_str path = ltx_read_str(cur);
+	char cpath[PATH_MAX];
+	int fd;
+	ssize_t bin_len, left, len;
+	off_t zero = 0;
+
+	if (path.data == NULL || !cur->left)
+		return 0;
+
+	bin_len = ltx_read_str_size(cur);
+
+	if (bin_len == -1)
+		return 0;
+
+	ltx_to_cstring(&path, cpath);
+	fd = LTX_EXP_FD(open(cpath, O_RDWR | O_CREAT | O_TRUNC, 0600));
+
+	left = bin_len;
+	while (cur->left && left) {
+		len = LTX_EXP_POS(write(fd, cur->ptr, ltx_min_sz(cur->left, bin_len)));
+		left -= len;
+		cur->left -= len;
+		cur->ptr += len;
+	}
+
+	if (!left)
+		goto echo;
+
+	while (left) {
+		len = LTX_EXP_POS(splice(ltx_in.fd, NULL, fd, NULL, left, 0));
+
+		if (!len)
+			break;
+
+		left -= len;
+	}
+
+echo:
+	LTX_WRITE_MSG(&out_buf, ltx_msg_set_file,
+		      { .kind = ltx_str, .str = path },
+		      LTX_BIN(bin_len, NULL));
+	fcntl(ltx_out.fd, F_SETFL, 0);
+	drain_write_buf();
+	len = LTX_EXP_POS(sendfile(ltx_out.fd, fd, &zero, bin_len));
+	fcntl(ltx_out.fd, F_SETFL, O_NONBLOCK);
+
+	close(fd);
 	return 1;
 }
 
@@ -671,7 +738,13 @@ static void process_msgs(void)
 				goto out;
 			break;
 		case ltx_msg_set_file:
-			ltx_assert(!ltx_msg_set_file, "Not implemented");
+			ltx_assert(msg_arr_len == 3,
+				   "Set File: (msg_arr_len = %u) != 3",
+				   msg_arr_len);
+
+			if (!process_set_file_msg(&cur))
+				goto out;
+			break;
 		case ltx_msg_data:
 			ltx_assert(!ltx_msg_data, "Not implemented");
 		default:
