@@ -45,7 +45,7 @@ class TestHostSUT:
 
         for _ in range(0, 100):
             ret = sut.channel.run_cmd("echo 'hello world'", 1)
-            assert 'hello world\n' in ret["stdout"]
+            assert 'hello world' in ret["stdout"]
             assert ret["returncode"] == 0
             assert ret["exec_time"] > 0
             assert ret["timeout"] == 1
@@ -75,7 +75,7 @@ class TestHostSUT:
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        ret = sut.channel.run_cmd("sleep 1", timeout=10)
+        ret = sut.channel.run_cmd("sleep 5", timeout=10)
         thread.join()
 
         assert ret["returncode"] != 0
@@ -102,7 +102,7 @@ class TestHostSUT:
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        ret = sut.channel.run_cmd("sleep 1", timeout=10)
+        ret = sut.channel.run_cmd("sleep 5", timeout=10)
         thread.join()
 
         assert ret["returncode"] != 0
@@ -165,11 +165,11 @@ class TestQemuSUT:
             assert sut.channel is not None
 
             for _ in range(0, 100):
-                ret = sut.channel.run_cmd("echo 'hello world'", 1)
-                assert 'hello world\n' in ret["stdout"]
+                ret = sut.channel.run_cmd("echo 'hello world'", timeout=4)
+                assert 'hello world' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
-                assert ret["timeout"] == 1
+                assert ret["timeout"] == 4
                 assert ret["command"] == "echo 'hello world'"
         finally:
             sut.stop()
@@ -223,6 +223,8 @@ class TestQemuSUT:
                 while not sut.channel.is_running:
                     assert time.time() - start_t < 10
 
+                time.sleep(1)
+
                 if force:
                     sut.force_stop(timeout=10)
                 else:
@@ -231,7 +233,7 @@ class TestQemuSUT:
             thread = threading.Thread(target=_threaded, daemon=True)
             thread.start()
 
-            ret = sut.channel.run_cmd("sleep 1", timeout=10)
+            ret = sut.channel.run_cmd("sleep 5", timeout=10)
             thread.join()
 
             assert ret["returncode"] != 0
@@ -272,7 +274,6 @@ class TestQemuSUT:
         finally:
             sut.stop()
 
-    @pytest.mark.xfail(reason="qemu serial protocol doesn't permit a real command stop")
     @pytest.mark.parametrize("force", [True, False])
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
     def test_stop_during_fetch_file(self, tmpdir, image, password, serial, force):
@@ -402,7 +403,7 @@ class TestSSHSUT:
 
             for _ in range(0, 20):
                 ret = sut.channel.run_cmd("echo 'hello world'", 1)
-                assert 'hello world\n' in ret["stdout"]
+                assert 'hello world' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
                 assert ret["timeout"] == 1

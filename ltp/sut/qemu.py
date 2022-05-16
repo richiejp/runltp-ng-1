@@ -10,9 +10,10 @@ import time
 import shutil
 import logging
 import subprocess
-from typing import Any
+import threading
 from ltp.channel import SerialChannel
 from ltp.channel import Channel
+from ltp.common.freader import IOReader
 from .base import SUT
 from .base import SUTError
 
@@ -40,9 +41,13 @@ class QemuSUT(SUT):
         self._serial = kwargs.get("serial", "isa")
         self._logger = logging.getLogger("ltp.sut.qemu")
         self._proc = None
+        self._reader = None
+        self._stdout = None
+        self._stdin = None
         self._channel = None
         self._stop = False
         self._logged = False
+        self._lock = threading.Lock()
 
         system = kwargs.get("system", "x86_64")
         self._qemu_cmd = f"qemu-system-{system}"
@@ -68,45 +73,6 @@ class QemuSUT(SUT):
         if self._serial not in ["isa", "virtio"]:
             raise ValueError("Serial protocol must be isa or virtio")
 
-    def _vm_wait_and_send(
-            self,
-            towait: Any,
-            tosend: str,
-            stdout_callback: callable) -> None:
-        """
-        Wait for a string and send a reply.
-        """
-        if self._stop:
-            return
-
-        line = ""
-
-        while self._proc.poll() is None:
-            data = self._proc.stdout.read(1)
-            if not data:
-                continue
-
-            line += data
-
-            if line.endswith(towait):
-                self._proc.stdin.write(tosend)
-                self._proc.stdin.write("\n")
-                self._proc.stdin.flush()
-                break
-
-            if data == '\n':
-                self._logger.info(line.rstrip())
-                if stdout_callback:
-                    stdout_callback(line.rstrip())
-
-                line = ""
-
-        exitcode = self._proc.poll()
-        if exitcode and exitcode != 0:
-            if not self._stop:
-                raise SUTError(
-                    f"Qemu session ended with exit code {exitcode}")
-
     @property
     def name(self) -> str:
         return "qemu"
@@ -116,64 +82,72 @@ class QemuSUT(SUT):
         return self._channel
 
     def stop(self, timeout: int = 30) -> None:
-        self._stop = True
+        with self._lock:
+            self._stop = True
 
-        if self._channel:
-            self._channel.stop()
-            self._channel = None
+            if self._channel:
+                self._channel.stop()
+                self._channel = None
 
-        if self._proc:
-            self._logger.info("Shutting down virtual machine")
+            if self._proc:
+                self._logger.info("Shutting down virtual machine")
 
-            if self._logged:
-                self._proc.stdin.write("\n")
-                self._proc.stdin.write("poweroff")
-                self._proc.stdin.write("\n")
+                if self._logged:
+                    self._proc.stdin.write("poweroff\n")
 
-                try:
-                    self._proc.stdin.flush()
-                except BrokenPipeError:
-                    # sometimes we need to flush data after poweroff is sent,
-                    # but if poweroff already shutted down VM, we'll obtain a
-                    # BrokenPipeError that has to be ignored in this case
-                    pass
-            else:
-                self._proc.terminate()
+                    try:
+                        self._proc.stdin.flush()
+                    except BrokenPipeError:
+                        # sometimes we need to flush data after poweroff is
+                        # sent, but if poweroff already shutted down VM, we'll
+                        # obtain a BrokenPipeError that has to be ignored in
+                        # this case
+                        pass
+                else:
+                    self._proc.terminate()
 
-            secs = max(timeout, 0)
-            start_t = time.time()
+                secs = max(timeout, 0)
+                start_t = time.time()
 
-            while self._proc.poll() is None:
-                time.sleep(0.05)
-                if time.time() - start_t > secs:
-                    raise SUTError("Virtual machine timed out during poweroff")
+                while self._proc.poll() is None:
+                    time.sleep(0.05)
+                    if time.time() - start_t > secs:
+                        raise SUTError(
+                            "Virtual machine timed out during poweroff")
 
-            self._proc = None
+                self._proc = None
 
-            self._logger.info("Virtual machine stopped")
+                self._reader.stop()
+                self._reader = None
+
+                self._logger.info("Virtual machine stopped")
 
     def force_stop(self, timeout: int = 30) -> None:
-        self._stop = True
+        with self._lock:
+            self._stop = True
 
-        if self._channel:
-            self._channel.force_stop(timeout=timeout)
-            self._channel = None
+            if self._channel:
+                self._channel.force_stop(timeout=timeout)
+                self._channel = None
 
-        if self._proc:
-            self._logger.info("Killing virtual machine")
-            self._proc.kill()
+            if self._proc:
+                self._logger.info("Killing virtual machine")
+                self._proc.kill()
 
-            secs = max(timeout, 0)
-            start_t = time.time()
+                secs = max(timeout, 0)
+                start_t = time.time()
 
-            while self._proc.poll() is None:
-                time.sleep(0.05)
-                if time.time() - start_t > secs:
-                    raise SUTError("Virtual machine timed out during kill")
+                while self._proc.poll() is None:
+                    time.sleep(0.05)
+                    if time.time() - start_t > secs:
+                        raise SUTError("Virtual machine timed out during kill")
 
-            self._proc = None
+                self._proc = None
 
-            self._logger.info("Virtual machine killed")
+                self._reader.stop()
+                self._reader = None
+
+                self._logger.info("Virtual machine killed")
 
     # pylint: disable=too-many-statements
     def communicate(self, stdout_callback: callable = None) -> None:
@@ -254,21 +228,61 @@ class QemuSUT(SUT):
             shell=True,
             universal_newlines=True)
 
-        self._vm_wait_and_send(
-            "login:",
-            "root",
-            stdout_callback=stdout_callback)
+        exitcode = self._proc.poll()
+        if exitcode and exitcode != 0:
+            if not self._stop:
+                raise SUTError(f"Qemu session ended with exit code {exitcode}")
+
+        if self._stop:
+            return
+
+        self._reader = IOReader(self._proc.stdout.fileno())
+
+        self._logger.info("Waiting for login message")
+
+        self._reader.read_until(
+            lambda x: x.endswith("login:"),
+            time.time(),
+            180,
+            stdout_callback)
+
+        if self._stop:
+            return
+
+        self._proc.stdin.write("root")
+        self._proc.stdin.write("\n")
+        self._proc.stdin.flush()
+
+        self._logger.info("Waiting for password message")
+
+        self._reader.read_until(
+            lambda x: x.endswith(("Password:", "password:")),
+            time.time(),
+            30,
+            stdout_callback)
+
+        if self._stop:
+            return
+
+        self._logger.info("Logged in")
+
+        self._proc.stdin.write(self._password)
+        self._proc.stdin.write("\n")
+        self._proc.stdin.flush()
+
+        self._reader.read_until(
+            lambda x: x.endswith("#"),
+            time.time(),
+            30,
+            stdout_callback)
+
+        if self._stop:
+            return
+
+        self._proc.stdin.write("\n")
+        self._proc.stdin.flush()
 
         self._logged = True
-
-        self._vm_wait_and_send(
-            ("Password:", "password:"),
-            self._password,
-            stdout_callback=stdout_callback)
-        self._vm_wait_and_send(
-            "#",
-            "\n",
-            stdout_callback=stdout_callback)
 
         if self._stop:
             return
@@ -286,12 +300,6 @@ class QemuSUT(SUT):
         if self._stop:
             return
 
-        self._channel.run_cmd("export PS1=''")
-
-        if self._stop:
-            return
-
-        # mount virtual FS
         if self._virtfs:
             self._channel.run_cmd("mount -t 9p -o trans=virtio host0 /mnt")
 
