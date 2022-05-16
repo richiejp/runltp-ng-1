@@ -76,12 +76,6 @@ class SimpleConsoleEvents(Events):
         self._print(f"\nDisconnecting from SUT: {sut}")
 
     def sut_restart(self, sut: str) -> None:
-        if not self._verbose and \
-                self._kernel_tained and \
-                not self._kernel_panic and \
-                not self._sut_not_responding:
-            self._print("tained kernel", color=self.YELLOW)
-
         self._print(f"Restarting SUT: {sut}")
 
     def sut_stdout_line(self, _: str, line: str) -> None:
@@ -152,8 +146,6 @@ class SimpleConsoleEvents(Events):
             # this message will replace ok/fail message when non verbose
             if not self._verbose:
                 self._print("kernel panic", color=self.RED)
-        elif self._kernel_tained:
-            pass
         else:
             if not self._verbose:
                 msg = "pass"
@@ -169,7 +161,13 @@ class SimpleConsoleEvents(Events):
                     msg = "broken"
                     col = self.CYAN
 
-                self._print(msg, color=col)
+                self._print(msg, color=col, end="")
+
+                if self._kernel_tained:
+                    self._print(" | ", end="")
+                    self._print("tained", color=self.YELLOW)
+                else:
+                    self._print("")
 
         self._sut_not_responding = False
         self._kernel_panic = False

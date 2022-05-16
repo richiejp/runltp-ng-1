@@ -196,6 +196,7 @@ class SerialDispatcher(Dispatcher):
         # can't get results data from channel
         stdout = []
         timed_out = False
+        tained_code_before = 0
 
         try:
             # check for tained kernel status
@@ -215,16 +216,6 @@ class SerialDispatcher(Dispatcher):
                 cwd=self._ltpdir,
                 env=env,
                 stdout_callback=_mystdout_line)
-
-            # check again for tained kernel and if tained status has changed
-            # just raise an exception and reboot the SUT
-            tained_code_after, tained_msg_after = self._check_tained()
-            if tained_code_before != tained_code_after:
-                for msg in tained_msg_after:
-                    self._events.kernel_tained(msg)
-
-                self._reboot_sut()
-
         except ChannelTimeoutError:
             timed_out = True
 
@@ -262,10 +253,22 @@ class SerialDispatcher(Dispatcher):
             test_data,
             timed_out=timed_out)
 
+        # check again for tained kernel and if tained status has changed
+        # just raise an exception and reboot the SUT
+        tained_code_after, tained_msg_after = self._check_tained()
+        if tained_code_before != tained_code_after:
+            for msg in tained_msg_after:
+                self._events.kernel_tained(msg)
+
         self._events.test_completed(results)
 
         self._logger.info("Test completed")
         self._logger.debug(results)
+
+        if tained_code_before != tained_code_after:
+            # reboot the system if it's not host
+            if self._sut.name != "host":
+                self._reboot_sut()
 
         return results
 
