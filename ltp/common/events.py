@@ -178,6 +178,16 @@ class Events:
         """
         pass
 
+    def test_timed_out(self, test: Test, timeout: int) -> None:
+        """
+        Raised when test timed out.
+        :param test: running test
+        :type test: Test
+        :param timeout: time before test timed out
+        :type timeout: int
+        """
+        pass
+
     def run_cmd_start(self, cmd: str) -> None:
         """
         Raised when a new command is going to be run.

@@ -169,7 +169,8 @@ class TestSerialDispatcher:
         sut.communicate()
 
         try:
-            with pytest.raises(ChannelTimeoutError):
-                dispatcher.exec_suites(suites=["sleepsuite"])
+            ret = dispatcher.exec_suites(suites=["sleepsuite"])
         finally:
             sut.stop()
+
+        assert ret[0].tests_results[0].return_code == -1

@@ -8,7 +8,6 @@
 import os
 import time
 import logging
-from ltp import LTPException
 from ltp.channel import Channel
 from ltp.channel import ChannelTimeoutError
 from ltp.metadata import Suite
@@ -19,18 +18,6 @@ from ltp.results import TestResults
 from .base import Dispatcher
 from .base import DispatcherError
 from .base import SuiteTimeoutError
-
-
-class KernelCrashedError(LTPException):
-    """
-    Raised wen kernel has crashed.
-    """
-
-
-class KernelTainedError(LTPException):
-    """
-    Raised wen kernel has tained.
-    """
 
 
 class SerialDispatcher(Dispatcher):
@@ -104,7 +91,7 @@ class SerialDispatcher(Dispatcher):
         """
         runtest_dir = os.path.join(self._ltpdir, "runtest")
 
-        ret = channel.run_cmd(f"ls -1 {runtest_dir}", 2)
+        ret = channel.run_cmd(f"ls -1 {runtest_dir}", timeout=10)
 
         retcode = ret["returncode"]
         if retcode != 0:
@@ -191,7 +178,6 @@ class SerialDispatcher(Dispatcher):
 
         self._logger.info("SUT rebooted")
 
-    # pylint: disable=too-many-locals
     def _run_test(self, test: Test, env: dict) -> TestResults:
         """
         Run a single test and return the test results.
@@ -205,7 +191,11 @@ class SerialDispatcher(Dispatcher):
         cmd = f"{test.command} {args}"
 
         test_data = None
-        stdout_crash = []
+
+        # we save stdout just in case we get kernel panic and we
+        # can't get results data from channel
+        stdout = []
+        timed_out = False
 
         try:
             # check for tained kernel status
@@ -217,20 +207,7 @@ class SerialDispatcher(Dispatcher):
             # wrapper around stdout callback
             def _mystdout_line(line):
                 self._events.test_stdout_line(test, line)
-
-                # kernel panic message comes out from stdout
-                if "Kernel panic" in line:
-                    self._logger.info("Detected Kernel Panic")
-                    self._events.kernel_panic()
-                    stdout_crash.append(line)
-
-                if stdout_crash:
-                    stdout_crash.append(line)
-
-                    if "Rebooting" in line:
-                        # once we reached Rebooing message,
-                        # we can raise the KernelCrashedError exception
-                        raise KernelCrashedError()
+                stdout.append(line)
 
             test_data = self._sut.channel.run_cmd(
                 cmd,
@@ -246,42 +223,44 @@ class SerialDispatcher(Dispatcher):
                 for msg in tained_msg_after:
                     self._events.kernel_tained(msg)
 
-                raise KernelTainedError()
-
-        except ChannelTimeoutError as err:
-            raise_err = False
-
-            # check if SUT still replies to commands
-            try:
-                self._sut.channel.run_cmd("test .", timeout=10)
-
-                # nothing happened, so it's probably a test issue
-                raise_err = True
-            except ChannelTimeoutError:
-                # we need to reboot the SUT
-                self._logger.info("SUT is not replying")
-                self._events.sut_not_responding()
                 self._reboot_sut()
 
-            if raise_err:
-                raise err
-        except KernelTainedError:
-            self._reboot_sut()
-        except KernelCrashedError:
-            self._reboot_sut()
+        except ChannelTimeoutError:
+            timed_out = True
+
+            try:
+                # check if SUT still replies to commands..
+                self._sut.channel.run_cmd("test .", timeout=3)
+
+                # SUT is replying. Only test timed out
+                self._events.test_timed_out(test.name, self._test_timeout)
+            except ChannelTimeoutError:
+                # ..if not, we reboot the SUT
+                # it might be a kernel panic or a kernel freeze
+                self._logger.info("SUT is not replying")
+
+                if any("Kernel panic" in msg for msg in stdout):
+                    self._events.kernel_panic()
+                else:
+                    self._events.sut_not_responding()
+
+                self._reboot_sut()
 
             # emulate test reply
             test_data = {
                 "name": test.name,
                 "command": test.command,
-                "stdout": "\n".join(stdout_crash),
+                "stdout": "\n".join(stdout),
                 "returncode": -1,
                 "exec_time": self._test_timeout,
                 "cwd": self._ltpdir,
                 "env": env
             }
 
-        results = self._get_test_results(test, test_data)
+        results = self._get_test_results(
+            test,
+            test_data,
+            timed_out=timed_out)
 
         self._events.test_completed(results)
 
@@ -307,65 +286,62 @@ class SerialDispatcher(Dispatcher):
         env["PATH"] = "/sbin:/usr/sbin:/usr/local/sbin:" + \
             f"/root/bin:/usr/local/bin:/usr/bin:/bin:{testcases}"
 
-        suite_results = None
+        self._events.suite_started(suite)
 
-        try:
-            self._events.suite_started(suite)
+        # execute tests
+        tests_results = []
 
-            # execute tests
-            tests_results = []
+        start_t = time.time()
 
-            start_t = time.time()
+        for test in suite.tests:
+            if self._stop:
+                return None
 
-            for test in suite.tests:
-                if self._stop:
-                    return None
+            results = self._run_test(test, env)
+            if not results:
+                break
 
-                results = self._run_test(test, env)
-                if not results:
-                    break
+            tests_results.append(results)
 
-                tests_results.append(results)
+            if time.time() - start_t >= self._suite_timeout:
+                raise SuiteTimeoutError(
+                    f"{suite.name} suite timed out "
+                    f"(timeout={self._suite_timeout})")
 
-                if time.time() - start_t >= self._suite_timeout:
-                    raise SuiteTimeoutError(
-                        f"{suite.name} suite timed out "
-                        f"(timeout={self._suite_timeout})")
+        self._logger.info("Reading SUT information")
 
-            self._logger.info("Reading SUT information")
+        # create suite results
+        distro_str = self._read_sut_info(
+            self._sut.channel,
+            ". /etc/os-release; echo \"$ID\"")
+        distro_ver_str = self._read_sut_info(
+            self._sut.channel,
+            ". /etc/os-release; echo \"$VERSION_ID\"")
+        kernel_str = self._read_sut_info(
+            self._sut.channel,
+            "uname -s -r -v")
+        arch_str = self._read_sut_info(
+            self._sut.channel,
+            "uname -m")
 
-            # create suite results
-            distro_str = self._read_sut_info(
-                self._sut.channel,
-                ". /etc/os-release; echo \"$ID\"")
-            distro_ver_str = self._read_sut_info(
-                self._sut.channel,
-                ". /etc/os-release; echo \"$VERSION_ID\"")
-            kernel_str = self._read_sut_info(
-                self._sut.channel,
-                "uname -s -r -v")
-            arch_str = self._read_sut_info(
-                self._sut.channel,
-                "uname -m")
+        suite_results = SuiteResults(
+            suite=suite,
+            tests=tests_results,
+            distro=distro_str,
+            distro_ver=distro_ver_str,
+            kernel=kernel_str,
+            arch=arch_str)
 
-            suite_results = SuiteResults(
-                suite=suite,
-                tests=tests_results,
-                distro=distro_str,
-                distro_ver=distro_ver_str,
-                kernel=kernel_str,
-                arch=arch_str)
-        finally:
-            self._logger.info("Storing dmesg information")
+        self._logger.info("Storing dmesg information")
 
-            # read kernel messages for the current SUT instance
-            dmesg_stdout = self._sut.channel.run_cmd("dmesg", timeout=60)
-            command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
-            with open(command, "w", encoding="utf-8") as fdmesg:
-                fdmesg.write(dmesg_stdout["stdout"])
+        # read kernel messages for the current SUT instance
+        dmesg_stdout = self._sut.channel.run_cmd("dmesg", timeout=60)
+        command = os.path.join(self._tmpdir, f"dmesg_{suite.name}.log")
+        with open(command, "w", encoding="utf-8") as fdmesg:
+            fdmesg.write(dmesg_stdout["stdout"])
 
-            if suite_results:
-                self._events.suite_completed(suite_results)
+        if suite_results:
+            self._events.suite_completed(suite_results)
 
         self._logger.debug(suite_results)
         self._logger.info("Suite completed")
@@ -386,9 +362,10 @@ class SerialDispatcher(Dispatcher):
 
         try:
             avail_suites = self._read_available_suites(self._sut.channel)
-            if set(avail_suites).issubset(set(suites)):
+            if len(avail_suites) != len(suites) and \
+                    set(avail_suites).issubset(set(suites)):
                 raise DispatcherError(
-                    "'Some suites are not available. Available suites are: "
+                    "Some suites are not available. Available suites are: "
                     f"{' '.join(avail_suites)}")
 
             for suite_name in suites:

@@ -31,6 +31,7 @@ class SimpleConsoleEvents(Events):
         self._sut_not_responding = False
         self._kernel_panic = False
         self._kernel_tained = None
+        self._timed_out = False
 
     @staticmethod
     def _print(msg: str, color: str = None, end: str = "\n"):
@@ -75,7 +76,13 @@ class SimpleConsoleEvents(Events):
         self._print(f"\nDisconnecting from SUT: {sut}")
 
     def sut_restart(self, sut: str) -> None:
-        self._print(f"\nRestarting SUT: {sut}")
+        if not self._verbose and \
+                self._kernel_tained and \
+                not self._kernel_panic and \
+                not self._sut_not_responding:
+            self._print("tained kernel", color=self.YELLOW)
+
+        self._print(f"Restarting SUT: {sut}")
 
     def sut_stdout_line(self, _: str, line: str) -> None:
         if self._verbose:
@@ -84,22 +91,14 @@ class SimpleConsoleEvents(Events):
     def sut_not_responding(self) -> None:
         self._sut_not_responding = True
 
-        # this message will replace ok/fail message when non verbose
-        if not self._verbose:
-            self._print("SUT not responding", color=self.RED)
-
     def kernel_panic(self) -> None:
         self._kernel_panic = True
 
-        # this message will replace ok/fail message when non verbose
-        if not self._verbose:
-            self._print("kernel panic", color=self.RED)
-
     def kernel_tained(self, message: str) -> None:
-        if self._verbose:
-            self._print(f"Kernel tained: {message}", color=self.YELLOW)
-
         self._kernel_tained = message
+
+        if self._verbose:
+            self._print(f"Tained kernel: {message}", color=self.YELLOW)
 
     def suite_download_started(
             self,
@@ -140,39 +139,42 @@ class SimpleConsoleEvents(Events):
         self._print(msg, end="")
 
     def test_completed(self, results: TestResults) -> None:
-        if self._verbose:
-            self._sut_not_responding = False
-            self._kernel_panic = False
-            self._kernel_tained = None
-            return
-
-        if not self._verbose:
-            if self._kernel_panic or self._sut_not_responding:
-                return
-
-        msg = "pass"
-        col = self.GREEN
-
-        if results.failed > 0:
-            msg = "fail"
-            col = self.RED
-        elif results.skipped > 0:
-            msg = "skip"
-            col = self.YELLOW
-        elif results.broken > 0:
-            msg = "broken"
-            col = self.CYAN
-
-        if self._kernel_tained:
-            self._print(msg, color=col, end="")
-            self._print(" | ", end="")
-            self._print("kernel tained", color=self.YELLOW)
+        if self._timed_out:
+            if self._verbose:
+                self._print("Test timed out", color=self.RED)
+            else:
+                self._print("timed out", color=self.RED)
+        elif self._sut_not_responding:
+            # this message will replace ok/fail message when non verbose
+            if not self._verbose:
+                self._print("SUT not responding", color=self.RED)
+        elif self._kernel_panic:
+            # this message will replace ok/fail message when non verbose
+            if not self._verbose:
+                self._print("kernel panic", color=self.RED)
+        elif self._kernel_tained:
+            pass
         else:
-            self._print(msg, color=col)
+            if not self._verbose:
+                msg = "pass"
+                col = self.GREEN
+
+                if results.failed > 0:
+                    msg = "fail"
+                    col = self.RED
+                elif results.skipped > 0:
+                    msg = "skip"
+                    col = self.YELLOW
+                elif results.broken > 0:
+                    msg = "broken"
+                    col = self.CYAN
+
+                self._print(msg, color=col)
 
         self._sut_not_responding = False
         self._kernel_panic = False
         self._kernel_tained = None
+        self._timed_out = False
 
     def test_stdout_line(self, _: Test, line: str) -> None:
         if self._verbose:
@@ -189,6 +191,9 @@ class SimpleConsoleEvents(Events):
                 col = self.RED
 
             self._print(line, color=col)
+
+    def test_timed_out(self, _: Test, timeout: int) -> None:
+        self._timed_out = True
 
     def run_cmd_start(self, cmd: str) -> None:
         msg = f"{cmd}: "

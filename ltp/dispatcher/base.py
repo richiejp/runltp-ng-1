@@ -29,13 +29,18 @@ class Dispatcher:
     """
 
     @staticmethod
-    def _get_test_results(test: Test, test_data: dict) -> TestResults:
+    def _get_test_results(
+            test: Test,
+            test_data: dict,
+            timed_out: bool = False) -> TestResults:
         """
         Return test results accoding with runner output and Test definition.
         :param test: Test definition object
         :type test: Test
         :param test_data: output data from a runner execution
         :type test_data: dict
+        :param timed_out: if True, test will be considered broken by default
+        :type timed_out: bool
         :returns: TestResults
         """
         stdout = test_data["stdout"]
@@ -85,6 +90,9 @@ class Dispatcher:
                     failed = 1
                 else:
                     passed = 1
+
+        if timed_out:
+            broken = 1
 
         result = TestResults(
             test=test,
