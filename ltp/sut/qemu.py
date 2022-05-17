@@ -149,23 +149,28 @@ class QemuSUT(SUT):
 
                 self._logger.info("Virtual machine killed")
 
-    # pylint: disable=too-many-statements
-    def communicate(self, stdout_callback: callable = None) -> None:
-        if self._proc:
-            raise SUTError("Virtual machine is already running")
-
-        if not shutil.which(self._qemu_cmd):
-            raise SUTError(f"Command not found: {self._qemu_cmd}")
-
-        self._stop = False
-        self._logged = False
-
-        self._logger.info("Starting virtual machine")
-
+    def _get_transport(self) -> str:
+        """
+        Return a couple of transport_dev and transport_file used by
+        qemu instance for transport configuration.
+        """
         pid = os.getpid()
-        tty_log = os.path.join(self._tmpdir, f"ttyS0-{pid}.log")
         transport_file = os.path.join(self._tmpdir, f"transport-{pid}")
         transport_dev = ""
+
+        if self._serial == "isa":
+            transport_dev = "ttyS1"
+        elif self._serial == "virtio":
+            transport_dev = "vport1p1"
+
+        return transport_dev, transport_file
+
+    def _get_command(self) -> str:
+        """
+        Return the full qemu command to execute.
+        """
+        pid = os.getpid()
+        tty_log = os.path.join(self._tmpdir, f"ttyS0-{pid}.log")
 
         image = self._image
         if self._image_overlay:
@@ -184,11 +189,9 @@ class QemuSUT(SUT):
         params.append(f"-chardev stdio,id=tty,logfile={tty_log}")
 
         if self._serial == "isa":
-            transport_dev = "ttyS1"
             params.append("-serial chardev:tty")
             params.append("-serial chardev:transport")
         elif self._serial == "virtio":
-            transport_dev = "vport1p1"
             params.append("-device virtio-serial")
             params.append("-device virtconsole,chardev=tty")
             params.append("-device virtserialport,chardev=transport")
@@ -196,6 +199,7 @@ class QemuSUT(SUT):
             raise NotImplementedError(
                 f"Unsupported serial device type {self._serial}")
 
+        _, transport_file = self._get_transport()
         params.append(f"-chardev file,id=transport,path={transport_file}")
 
         if self._ro_image:
@@ -217,6 +221,22 @@ class QemuSUT(SUT):
             params.extend(self._opts)
 
         cmd = f"{self._qemu_cmd} {' '.join(params)}"
+
+        return cmd
+
+    def communicate(self, stdout_callback: callable = None) -> None:
+        if self._proc:
+            raise SUTError("Virtual machine is already running")
+
+        if not shutil.which(self._qemu_cmd):
+            raise SUTError(f"Command not found: {self._qemu_cmd}")
+
+        self._stop = False
+        self._logged = False
+
+        self._logger.info("Starting virtual machine")
+
+        cmd = self._get_command()
 
         self._logger.debug(cmd)
 
@@ -297,6 +317,8 @@ class QemuSUT(SUT):
             return
 
         self._logger.info("Creating communication objects")
+
+        transport_dev, transport_file = self._get_transport()
 
         self._channel = SerialChannel(
             stdin=self._proc.stdin,

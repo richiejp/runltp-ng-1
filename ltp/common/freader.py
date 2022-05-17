@@ -96,6 +96,7 @@ class IOReader:
 
             while not found:
                 # during stop, poller might be closed
+                # pylint: disable=using-constant-test
                 if self._poller.closed:
                     break
 
