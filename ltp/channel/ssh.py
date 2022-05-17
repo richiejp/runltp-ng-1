@@ -195,8 +195,6 @@ class SSHChannel(SSHBase, Channel):
             self._running = True
 
             while True:
-                time.sleep(0.05)
-
                 line = stdout.readline()
                 if not line:
                     break
