@@ -193,3 +193,14 @@ class TestLtx:
         data = unpack_next()
         assert(data[0] == 8)
         assert(data[1] == pattern)
+
+    def test_kill(self):
+        send(packb([3, 1, "/usr/bin/sleep", "10"]))
+        send(packb([9, 1]))
+
+        res = unpack_next()
+        assert(res[0] == 5)
+        assert(res[1] == 1)
+        check_time(res[2])
+        assert(res[3] == 2)
+        assert(res[4] == 9)

@@ -65,7 +65,8 @@ struct ltx_buf {
 };
 
 struct ltx_cursor {
-	uint8_t *ptr;
+	uint8_t *start;
+	size_t used;
 	size_t left;
 };
 
@@ -84,7 +85,8 @@ enum ltx_msg_types {
 	ltx_msg_get_file,
 	ltx_msg_set_file,
 	ltx_msg_data,
-	ltx_msg_max = ltx_msg_data,
+	ltx_msg_kill,
+	ltx_msg_max = ltx_msg_kill,
 };
 
 enum ltx_kind {
@@ -210,25 +212,20 @@ static size_t ltx_buf_avail(const struct ltx_buf *const self)
 }
 
 __attribute__((nonnull, warn_unused_result))
-static uint8_t ltx_cur_shift(struct ltx_cursor *const self)
+static uint8_t *ltx_cur_take(struct ltx_cursor *const self, size_t len)
 {
-	const uint8_t c = self->ptr[0];
+	uint8_t *ptr = self->start + self->used;
 
-	self->left--;
-	self->ptr++;
+	self->left -= len;
+	self->used += len;
 
-	return c;
+	return ptr;
 }
 
 __attribute__((nonnull, warn_unused_result))
-static uint8_t *ltx_cur_take(struct ltx_cursor *const self, size_t len)
+static uint8_t ltx_cur_shift(struct ltx_cursor *const self)
 {
-	uint8_t *ptr = self->ptr;
-
-	self->left -= len;
-	self->ptr += len;
-
-	return ptr;
+	return ltx_cur_take(self, 1)[0];
 }
 
 __attribute__((nonnull))
@@ -555,29 +552,44 @@ static void ltx_to_cstring(struct ltx_str *str, char *cstr)
 	cstr[str->len] = '\0';
 }
 
+static void ltx_msg_echo(struct ltx_cursor *cur)
+{
+	ltx_assert(ltx_buf_avail(&out_buf) > cur->used,
+		   "Out buffer full: %zu < %zu",
+		   ltx_buf_avail(&out_buf), cur->used);
+
+	memcpy(ltx_buf_end(&out_buf), cur->start, cur->used);
+	out_buf.used += cur->used;
+}
+
 static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 {
 	uint8_t table_id;
-	char cpath[256];
+	char argsv_buf[BUFSIZ];
+	char *argsv[16];
 	pid_t child;
-	int pipefd[2];
+	int c, pipefd[2];
 
 	table_id = ltx_cur_shift(cur);
 	ltx_assert(table_id < 0x7f, "Exec: (table_id = %u) > 127", table_id);
+	ltx_assert(args_n - 1 < 16, "Exec: Too many arguments: %u", args_n);
 
 	if (!cur->left)
 		return 0;
 
-	struct ltx_str path = ltx_read_str(cur);
+	argsv[0] = argsv_buf;
+	for (c = 0; c < args_n - 1; c++) {
+		struct ltx_str path = ltx_read_str(cur);
 
-	if (!path.data)
-		return 0;
+		if (!path.data)
+			return 0;
 
-	LTX_WRITE_MSG(&out_buf, ltx_msg_exec,
-		      LTX_NUMBER(table_id),
-		      { .kind = ltx_str, .str = path});
+		ltx_to_cstring(&path, argsv[c]);
+		argsv[c + 1] = argsv[c] + path.len + 1;
+	}
+	argsv[c] = NULL;
 
-	ltx_assert(args_n == 2, "Exec: argsv not implemented");
+	ltx_msg_echo(cur);
 
 	LTX_EXP_0(pipe2(pipefd, O_CLOEXEC));
 	childs[table_id].fd = pipefd[0];
@@ -594,8 +606,7 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 	LTX_EXP_POS(dup2(pipefd[1], STDERR_FILENO));
 	LTX_EXP_POS(dup2(pipefd[1], STDOUT_FILENO));
 
-	ltx_to_cstring(&path, cpath);
-	LTX_EXP_0(execv(cpath, (char *const[]){ cpath, NULL }));
+	LTX_EXP_0(execv(argsv[0], argsv));
 	__builtin_unreachable();
 }
 
@@ -609,8 +620,7 @@ static int process_get_file_msg(struct ltx_cursor *cur)
 	if (path.data == NULL)
 		return 0;
 
-	LTX_WRITE_MSG(&out_buf, ltx_msg_get_file,
-		      { .kind = ltx_str, .str = path });
+	ltx_msg_echo(cur);
 
 	ltx_to_cstring(&path, cpath);
 	fd = LTX_EXP_FD(open(cpath, O_RDONLY));
@@ -653,10 +663,11 @@ static int process_set_file_msg(struct ltx_cursor *cur)
 
 	left = bin_len;
 	while (cur->left && left) {
-		len = LTX_EXP_POS(write(fd, cur->ptr, ltx_min_sz(cur->left, bin_len)));
+		len = LTX_EXP_POS(write(fd, cur->start + cur->used,
+					ltx_min_sz(cur->left, bin_len)));
 		left -= len;
 		cur->left -= len;
-		cur->ptr += len;
+		cur->used += len;
 	}
 
 	if (!left)
@@ -684,15 +695,34 @@ echo:
 	return 1;
 }
 
+static void process_kill_msg(struct ltx_cursor *const cur)
+{
+	int ret = 0;
+	const uint8_t table_id = ltx_cur_shift(cur);
+
+	ltx_assert(table_id < 0x7f, "Kill: (table_id = %u) > 127", table_id);
+
+	ltx_msg_echo(cur);
+
+	if (child_pids[table_id])
+		ret = kill(child_pids[table_id], SIGKILL);
+	LTX_EXP_0(ret * (errno != ESRCH));
+}
+
 static void process_msgs(void)
 {
 	struct ltx_cursor outer_cur = {
-		.ptr = ltx_buf_start(&in_buf),
+		.start = ltx_buf_start(&in_buf),
 		.left = in_buf.used,
+		.used = 0
 	};
 
 	while (outer_cur.left > 1) {
-		struct ltx_cursor cur = outer_cur;
+		struct ltx_cursor cur = {
+			.start = outer_cur.start + outer_cur.used,
+			.left = outer_cur.left,
+			.used = 0,
+		};
 		enum msgp_fmt msg_fmt = ltx_cur_shift(&cur);
 
 		ltx_assert(msg_fmt & msgp_fixarray0,
@@ -702,13 +732,17 @@ static void process_msgs(void)
 		const uint8_t msg_arr_len = msg_fmt - msgp_fixarray0;
 		const uint8_t msg_type = ltx_cur_shift(&cur);
 
+		ltx_assert(msg_type <= ltx_msg_max,
+			   "(msg_type = %u) > ltx_msg_max",
+			   msg_type);
+
 		switch (msg_type) {
 		case ltx_msg_ping:
 			ltx_assert(msg_arr_len == 1,
 				   "Ping: (msg_arr_len = %u) != 1",
 				   msg_arr_len);
 
-			LTX_WRITE_MSG(&out_buf, ltx_msg_ping, LTX_END);
+			ltx_msg_echo(&cur);
 			LTX_WRITE_MSG(&out_buf, ltx_msg_pong,
 				      LTX_NUMBER(ltx_gettime()));
 			break;
@@ -720,6 +754,9 @@ static void process_msgs(void)
 			ltx_assert(msg_arr_len > 2,
 				   "Exec: (msg_arr_len = %u) < 3",
 				   msg_arr_len);
+
+			if (!cur.left)
+				goto out;
 
 			if (!process_exec_msg(&cur, msg_arr_len - 1))
 				goto out;
@@ -734,6 +771,9 @@ static void process_msgs(void)
 				   "Get File: (msg_arr_len = %u) != 2",
 				   msg_arr_len);
 
+			if (!cur.left)
+				goto out;
+
 			if (!process_get_file_msg(&cur))
 				goto out;
 			break;
@@ -742,26 +782,36 @@ static void process_msgs(void)
 				   "Set File: (msg_arr_len = %u) != 3",
 				   msg_arr_len);
 
+			if (!cur.left)
+				goto out;
+
 			if (!process_set_file_msg(&cur))
 				goto out;
 			break;
 		case ltx_msg_data:
-			ltx_assert(!ltx_msg_data, "Not implemented");
-		default:
-			ltx_assert(msg_type < ltx_msg_max,
-				   "(msg_type = %u) >= ltx_msg_max",
-				   msg_type);
-		}
+			ltx_assert(!ltx_msg_data, "Not handled by executor");
+		case ltx_msg_kill:
+			ltx_assert(msg_arr_len == 2,
+				   "Kill: (msg_arr_len = %u) != 2",
+				   msg_arr_len);
 
-		outer_cur = cur;
+			if (!cur.left)
+				goto out;
+
+			process_kill_msg(&cur);
+		}
 
 		if (out_buf.used > BUFSIZ / 4)
 			drain_write_buf();
+
+		outer_cur.used += cur.used;
+		outer_cur.left = cur.left;
 	}
 out:
-	in_buf.off = in_buf.used - outer_cur.left;
 	in_buf.used = outer_cur.left;
-	memmove(in_buf.data, ltx_buf_start(&in_buf), in_buf.used);
+	memmove(outer_cur.start,
+		outer_cur.start + outer_cur.used,
+		outer_cur.left);
 }
 
 static int process_event(const struct epoll_event *const ev)
@@ -806,6 +856,9 @@ static int process_event(const struct epoll_event *const ev)
 				       LTX_NUMBER(ltx_gettime()),
 				       LTX_NUMBER(si[i].ssi_code),
 				       LTX_NUMBER(si[i].ssi_status));
+
+			child_pids[table_id] = 0;
+			childs[table_id].pid = 0;
 		}
 	} else if (ev->events & EPOLLHUP || ev->events & EPOLLOUT) {
 		log_text = ltx_buf_end(&out_buf) + 32;

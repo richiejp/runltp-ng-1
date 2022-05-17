@@ -160,3 +160,12 @@ above.
 `data`: bin 8 | bin 16 | bin 32
 
 `[8, data]`
+
+### Kill
+
+Sent to LTX; sends the kill signal to the process in the specified
+table entry. If kill results in ESRCH the error is ignored
+
+`table_id`: positive fixint
+
+`[9, table_id]`
