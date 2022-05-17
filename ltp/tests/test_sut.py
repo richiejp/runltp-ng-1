@@ -316,7 +316,7 @@ class TestQemuSUT:
         thread.join()
 
         with open(local_path, "r") as target:
-            assert target.read() != f"{message}\n"
+            assert target.read() != f"{message}"
 
     def test_communicate_image_overlay(self, tmpdir, image, password):
         """

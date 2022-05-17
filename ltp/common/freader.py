@@ -28,6 +28,21 @@ class IOReader:
         self._stop_lock = threading.Lock()
         self._read_lock = threading.Lock()
         self._stop = False
+        self._timed_out = False
+
+    @property
+    def stopped(self) -> bool:
+        """
+        True if reader has been stopped during `read_until` method.
+        """
+        return self._stop
+
+    @property
+    def timed_out(self) -> bool:
+        """
+        True if reader has reached timeout during `read_until` method.
+        """
+        return self._timed_out
 
     def stop(self) -> None:
         """
@@ -52,8 +67,8 @@ class IOReader:
             timeout: int,
             line_callback: callable = None) -> str:
         """
-        Read from stdout until `checker` returns True. Method reaches `timeout`
-        from `t_start` and it returns `None`.
+        Read from stdout until `checker` returns True. When method reaches
+        `timeout`, `timed_out` flag will be True.
         :param checker: callback that checks the current buffer and return True
             if inner statement is valid
         :type checker: callable
@@ -69,6 +84,7 @@ class IOReader:
             raise ValueError("checker")
 
         self._stop = False
+        self._timed_out = False
 
         buffer = ""
 
@@ -79,33 +95,37 @@ class IOReader:
             timeout = max(0, timeout)
 
             while not found:
-                if self._stop:
-                    return None
+                # during stop, poller might be closed
+                if self._poller.closed:
+                    break
 
-                if time.time() - t_start >= timeout:
-                    return None
+                events = self._poller.poll(1)
 
-                # during stop poller might be closed
-                if not self._poller.closed:
-                    events = self._poller.poll(1)
+                for fdesc, _ in events:
+                    if fdesc != self._fdesc:
+                        continue
 
-                    for fdesc, _ in events:
-                        if fdesc != self._fdesc:
-                            continue
+                    data = os.read(self._fdesc, 1).decode(
+                        encoding='utf-8',
+                        errors='ignore')
 
-                        data = os.read(self._fdesc, 1).decode(
-                            encoding='utf-8',
-                            errors='ignore')
+                    buffer += data
+                    line += data
 
-                        buffer += data
-                        line += data
+                    if data == '\n' and line_callback:
+                        line_callback(line.rstrip())
+                        line = ""
 
-                        if data == '\n' and line_callback:
-                            line_callback(line.rstrip())
-                            line = ""
+                    if checker(buffer):
+                        found = True
+                        break
 
-                        if checker(buffer):
-                            found = True
-                            break
+                if not found:
+                    if self._stop:
+                        break
+
+                    if time.time() - t_start >= timeout:
+                        self._timed_out = True
+                        break
 
         return buffer

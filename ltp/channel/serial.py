@@ -141,9 +141,9 @@ class SerialChannel(Channel):
 
         self._stop = True
         self._send_ctrl_c()
-        self._wait_for_stop(timeout=timeout)
-
         self._wait_prompt()
+
+        self._wait_for_stop(timeout=timeout)
 
         self._logger.info("Command stopped")
 
@@ -200,7 +200,7 @@ class SerialChannel(Channel):
                 t_secs,
                 self._logger.debug)
 
-            if not line:
+            if self._reader.timed_out:
                 self._send_ctrl_c()
                 self._wait_prompt()
 
@@ -286,7 +286,6 @@ class SerialChannel(Channel):
             except OSError as err:
                 raise ChannelError(err)
             finally:
-                self._stdin.flush()
                 self._stop = False
                 self._running_command = False
 

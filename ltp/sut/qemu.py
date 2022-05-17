@@ -92,6 +92,9 @@ class QemuSUT(SUT):
             if self._proc:
                 self._logger.info("Shutting down virtual machine")
 
+                self._reader.stop()
+                self._reader = None
+
                 if self._logged:
                     self._proc.stdin.write("poweroff\n")
 
@@ -117,9 +120,6 @@ class QemuSUT(SUT):
 
                 self._proc = None
 
-                self._reader.stop()
-                self._reader = None
-
                 self._logger.info("Virtual machine stopped")
 
     def force_stop(self, timeout: int = 30) -> None:
@@ -129,6 +129,9 @@ class QemuSUT(SUT):
             if self._channel:
                 self._channel.force_stop(timeout=timeout)
                 self._channel = None
+
+            self._reader.stop()
+            self._reader = None
 
             if self._proc:
                 self._logger.info("Killing virtual machine")
@@ -143,9 +146,6 @@ class QemuSUT(SUT):
                         raise SUTError("Virtual machine timed out during kill")
 
                 self._proc = None
-
-                self._reader.stop()
-                self._reader = None
 
                 self._logger.info("Virtual machine killed")
 
@@ -246,6 +246,9 @@ class QemuSUT(SUT):
             180,
             stdout_callback)
 
+        if self._reader and self._reader.timed_out:
+            raise SUTError("Can't find login message")
+
         if self._stop:
             return
 
@@ -261,6 +264,9 @@ class QemuSUT(SUT):
             30,
             stdout_callback)
 
+        if self._reader and self._reader.timed_out:
+            raise SUTError("Can't find password message")
+
         if self._stop:
             return
 
@@ -275,6 +281,9 @@ class QemuSUT(SUT):
             time.time(),
             30,
             stdout_callback)
+
+        if self._reader and self._reader.timed_out:
+            raise SUTError("Can't find prompt shell")
 
         if self._stop:
             return
