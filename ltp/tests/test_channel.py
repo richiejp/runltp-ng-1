@@ -562,6 +562,7 @@ class TestShellChannel(_TestDataTransfer):
         assert ret["env"] is None
 
 
+@pytest.mark.xfail
 class TestSerialChannel(_TestDataTransfer):
     """
     Test SerialChannel class.
