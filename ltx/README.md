@@ -169,3 +169,11 @@ table entry. If kill results in ESRCH the error is ignored
 `table_id`: positive fixint
 
 `[9, table_id]`
+
+### Version
+
+Sent to LTX; responds with a log message containing the version
+e.g. "LTX Version=0.0.1-dev". Everything after the '=' is the version
+number.
+
+`[10]`

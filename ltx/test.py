@@ -67,7 +67,7 @@ def check_time(t):
     assert(t < time.monotonic_ns())
     
 def send(bs):
-    assert proc.stdin.write(bs) == len(bs)
+    assert os.write(proc.stdin.fileno(), bs) == len(bs)
     # echo
     expect_exact(bs)
 
@@ -80,7 +80,7 @@ def reopen():
         buf = b''
 
     proc = sp.Popen(
-        ["./ltx"],
+        ["strace", "-e", "read,write", "-x", "./ltx"],
         bufsize=0,
         stdin=sp.PIPE,
         stdout=sp.PIPE,
@@ -99,30 +99,22 @@ def spawn():
 
 class TestLtx:
     def test_compile_gcc(self):
-        run(f"gcc {CFLAGS} -fanalyzer {CFILES}")
+        run(f"gcc {CFLAGS} {CFILES}")
 
     def test_compile_clang(self):
         run(f"clang {CFLAGS} {CFILES}")
 
-    def test_version_nolib(self):
-        reopen()
-        expect_exact(b'\x94\x04\xc0\xcf')
-        expect_n_bytes(8)
-        expect_exact(b'\xd9/[ltx.c:main:')
-        expect_n_bytes(3)
-        expect_exact(b'] Linux Test Executor 0.0.1-dev\n')
-
     def test_version(self):
         global start_time
         reopen()
+        send(packb([10]))
         ver_msg = unpack_next()
         
         assert(len(ver_msg) == 4)
         assert(ver_msg[0] == 4)
         assert(ver_msg[1] == None)
         start_time = ver_msg[2]
-        assert(re.match(r'\[ltx.c:main:\d+\] Linux Test Executor 0.0.1-dev',
-                        ver_msg[3]) != None)
+        assert(re.match(r'LTX Version=0.0.1-dev', ver_msg[3]) != None)
 
     def test_ping_nolib(self):
         # Ping: [0]
@@ -196,6 +188,7 @@ class TestLtx:
 
     def test_kill(self):
         send(packb([3, 1, "/usr/bin/sleep", "10"]))
+        time.sleep(0.1)
         send(packb([9, 1]))
 
         res = unpack_next()

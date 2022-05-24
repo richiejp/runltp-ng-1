@@ -86,7 +86,8 @@ enum ltx_msg_types {
 	ltx_msg_set_file,
 	ltx_msg_data,
 	ltx_msg_kill,
-	ltx_msg_max = ltx_msg_kill,
+	ltx_msg_version,
+	ltx_msg_max = ltx_msg_version,
 };
 
 enum ltx_kind {
@@ -233,7 +234,7 @@ static void ltx_write_number(struct ltx_buf *const buf,
 			     enum ltx_num_kind kind,
 			     const uint64_t n)
 {
-	uint8_t h;
+	uint8_t h = 0;
 	size_t l = 0;
 
 	switch (kind) {
@@ -726,7 +727,7 @@ static void process_msgs(void)
 		enum msgp_fmt msg_fmt = ltx_cur_shift(&cur);
 
 		ltx_assert(msg_fmt & msgp_fixarray0,
-			   "Message should start with fixarray, not %x",
+			   "Message should start with fixarray, not 0x%x",
 			   msg_fmt);
 
 		const uint8_t msg_arr_len = msg_fmt - msgp_fixarray0;
@@ -799,6 +800,19 @@ static void process_msgs(void)
 				goto out;
 
 			process_kill_msg(&cur);
+			break;
+		case ltx_msg_version:
+			ltx_assert(msg_arr_len == 1,
+				   "Version: (msg_arr_len = %u) != 1",
+				   msg_arr_len);
+
+			ltx_msg_echo(&cur);
+			LTX_WRITE_MSG(&out_buf, ltx_msg_log,
+				      LTX_NIL,
+				      LTX_NUMBER(ltx_gettime()),
+				      LTX_STR(sizeof("LTX Version="VERSION),
+					      "LTX Version="VERSION));
+			break;
 		}
 
 		if (out_buf.used > BUFSIZ / 4)
@@ -930,7 +944,6 @@ static void event_loop(void)
 int main(void)
 {
 	ltx_pid = getpid();
-	LTX_LOG("Linux Test Executor " VERSION);
 
 	event_loop();
 
