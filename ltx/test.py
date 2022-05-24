@@ -159,6 +159,22 @@ class TestLtx:
         assert(res[3] == 1)
         assert(res[4] == 0)
 
+    def test_exec_echo(self):
+        send(packb([3, 0, "/usr/bin/echo", "foo", "bar", "baz"]))
+        log = unpack_next()
+        assert(log[0] == 4)
+        assert(log[1] == 0)
+        check_time(log[2])
+        assert(log[3] == "foo bar baz\n")
+
+        res = unpack_next()
+        assert(len(res) == 5)
+        assert(res[0] == 5)
+        assert(res[1] == 0)
+        check_time(res[2])
+        assert(res[3] == 1)
+        assert(res[4] == 0)
+
     def test_set_file(self, tmp_path):
         pattern = b'AaXa\x00\x01\x02Zz' * 2048
         d = tmp_path / 'get_file'
