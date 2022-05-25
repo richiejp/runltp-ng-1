@@ -23,10 +23,17 @@ class TestLTX:
 
         yield LTX(stdin, stdout)
 
+    def test_version(self, ltx):
+        """
+        Test version method.
+        """
+        version = ltx.version()
+        assert version
+
     @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
     def test_ping(self, ltx, count):
         """
-        Test PING command.
+        Test ping method.
         """
         for _ in range(0, count):
             time_ns = ltx.ping()
@@ -48,7 +55,7 @@ class TestLTX:
     @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
     def test_execute(self, ltx, count):
         """
-        Test EXEC command.
+        Test execute method.
         """
         for _ in range(0, count):
             table_id = ltx.reserve()
@@ -65,7 +72,7 @@ class TestLTX:
     @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
     def test_kill(self, ltx, count):
         """
-        Test KILL command after EXEC command.
+        Test kill method.
         """
         class SleepThread(threading.Thread):
             """
@@ -104,7 +111,7 @@ class TestLTX:
     @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
     def test_env_no_table_id(self, ltx, count):
         """
-        Test ENV command without table_id.
+        Test env method without table_id.
         """
         for _ in range(0, count):
             ltx.env(None, "HELLO", "world")
@@ -124,7 +131,7 @@ class TestLTX:
     @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
     def test_env_with_table_id(self, ltx, count):
         """
-        Test ENV command using table_id.
+        Test env method using table_id.
         """
         for _ in range(0, count):
             table_id = ltx.reserve()

@@ -6,6 +6,7 @@
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
+import re
 import time
 import select
 import logging
@@ -61,6 +62,7 @@ class LTX:
     SET_FILE = 7
     DATA = 8
     KILL = 9
+    VERSION = 10
 
     def __init__(self, stdin_fd: int, stdout_fd: int) -> None:
         """
@@ -189,6 +191,34 @@ class LTX:
 
         return counter
 
+    def version(self) -> str:
+        """
+        Get version from executor.
+        """
+        self._logger.info("Asking for version")
+
+        def validate_msg(msg):
+            """
+            Validate messages and return version from LOG message.
+            """
+            if msg[0] == LTX.VERSION:
+                self._logger.info("VERSION echoed back")
+            elif msg[0] == LTX.LOG and msg[1] is None:
+                match = re.match(r'LTX Version=(?P<version>.*)', msg[3])
+                if match:
+                    version = match.group("version").rstrip()
+                    return version
+
+            return None
+
+        msg = [LTX.VERSION]
+
+        version = self._send_and_reply(msg, validate_msg, timeout=10)
+
+        self._logger.info("Version received: %s", version)
+
+        return version
+
     def ping(self) -> int:
         """
         Ping executor and wait for pong.
@@ -196,7 +226,7 @@ class LTX:
         """
         self._logger.info("Sending ping")
 
-        def validate_msg(msg) -> bool:
+        def validate_msg(msg):
             """
             Validate messages and return time_ns when PONG has been received.
             """
