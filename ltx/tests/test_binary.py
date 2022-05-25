@@ -16,7 +16,7 @@ class LTXHelper:
     def __init__(self, proc) -> None:
         self._proc = proc
         self._buff = bytes()
-        self._start_time = time.monotonic_ns()
+        self._start_time = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
 
     @property
     def proc(self):
@@ -94,7 +94,7 @@ class LTXHelper:
         Check if the given time is inside bounds.
         """
         assert self._start_time < time_ns
-        assert time_ns < time.monotonic_ns()
+        assert time_ns < time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
 
 
 @pytest.fixture
@@ -160,7 +160,8 @@ def test_ping_flood(ltx_helper):
     assert ltx_helper.proc.stdin.write(pings) == len(pings)
 
     ping_eg = msgpack.packb([0])
-    pong_eg = msgpack.packb([1, time.monotonic_ns()])
+    pong_eg = msgpack.packb(
+        [1, time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)])
 
     for _ in range(2048):
         ltx_helper.expect_exact(ping_eg)
