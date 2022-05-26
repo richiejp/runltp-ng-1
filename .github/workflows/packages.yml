@@ -19,7 +19,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
       run: |
         sudo apt-get update
-        sudo apt-get -y install python3-pip libssh-4 openssh-server
+        sudo apt-get -y install python3-pip libssh-4 openssh-server build-essential clang
 
     - name: Install dependencies
       run: |
