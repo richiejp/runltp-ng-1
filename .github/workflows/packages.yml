@@ -19,7 +19,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
       run: |
         sudo apt-get update
-        sudo apt-get -y install python3-pip libssh-4 openssh-server build-essential clang
+        sudo apt-get -y install python3-pip libssh-4 openssh-server
 
     - name: Install dependencies
       run: |
@@ -28,4 +28,4 @@ jobs:
         python3 -m pip install -e .
 
     - name: Test with pytest
-      run: pytest --ignore=ltp/tests/test_install.py -m "not qemu and not ssh"
+      run: pytest --ignore=ltp/tests/test_install.py -m "not qemu and not ssh" ltp/tests

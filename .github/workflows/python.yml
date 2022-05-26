@@ -34,4 +34,4 @@ jobs:
       run: runltp-ng --help
 
     - name: Lint with pylint
-      run: pylint --rcfile=pylint.ini ./ltp
+      run: pylint --rcfile=pylint.ini ./ltp ./ltx
