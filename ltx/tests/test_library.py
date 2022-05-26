@@ -1,6 +1,7 @@
 """
 Tests for LTX python library.
 """
+import time
 import signal
 import threading
 import pytest
@@ -60,7 +61,7 @@ def test_reserve(ltx):
 
 
 @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
-def test_execute(ltx, count):
+def test_execute(ltx, count, whereis):
     """
     Test execute method.
     """
@@ -69,7 +70,7 @@ def test_execute(ltx, count):
 
         stdout, time_ns, si_code, si_status = ltx.execute(
             table_id,
-            "/usr/bin/uname",
+            whereis("uname")[0],
             timeout=0.5)
         assert stdout == "Linux\n"
         assert time_ns > 0
@@ -77,17 +78,18 @@ def test_execute(ltx, count):
         assert si_status == 0
 
 
-def test_execute_timeout(ltx):
+def test_execute_timeout(ltx, whereis):
     """
     Test execute method on timeout.
     """
     table_id = ltx.reserve()
     with pytest.raises(LTXError):
-        ltx.execute(table_id, "sleep 10", timeout=0)
+        paths = whereis("sleep")
+        ltx.execute(table_id, f"{paths[0]} 10", timeout=0)
 
 
 @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
-def test_kill(ltx, count):
+def test_kill(ltx, count, whereis):
     """
     Test kill method.
     """
@@ -101,12 +103,13 @@ def test_kill(ltx, count):
         si_status = 0
 
         def run(self) -> None:
+            paths = whereis("sleep")
             self.stdout, \
                 self.time_ns, \
                 self.si_code, \
                 self.si_status = ltx.execute(
                     table_id,
-                    "/usr/bin/sleep 4",
+                    f"{paths[0]} 4",
                     timeout=6)
 
     for _ in range(0, count):
@@ -115,6 +118,7 @@ def test_kill(ltx, count):
         thread = SleepThread(daemon=True)
         thread.start()
 
+        time.sleep(0.1)
         ltx.kill(table_id)
 
         thread.join()
@@ -127,17 +131,19 @@ def test_kill(ltx, count):
 
 @pytest.mark.xfail(msg="Not implemented yet")
 @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
-def test_env_no_table_id(ltx, count):
+def test_env_no_table_id(ltx, count, whereis):
     """
     Test env method without table_id.
     """
+    paths = whereis("echo")
+
     for _ in range(0, count):
         ltx.env(None, "HELLO", "world")
 
         table_id = ltx.reserve()
         stdout, time_ns, si_code, si_status = ltx.execute(
             table_id,
-            "echo $HELLO",
+            f"{paths[0]} $HELLO",
             timeout=1)
 
         assert stdout == "world\n"
@@ -148,17 +154,19 @@ def test_env_no_table_id(ltx, count):
 
 @pytest.mark.xfail(msg="Not implemented yet")
 @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
-def test_env_with_table_id(ltx, count):
+def test_env_with_table_id(ltx, count, whereis):
     """
     Test env method using table_id.
     """
+    paths = whereis("echo")
+
     for _ in range(0, count):
         table_id = ltx.reserve()
 
         ltx.env(table_id, "HELLO", "world")
         stdout, time_ns, si_code, si_status = ltx.execute(
             table_id,
-            "echo $HELLO",
+            f"{paths[0]} $HELLO",
             timeout=1)
 
         assert stdout == "world\n"

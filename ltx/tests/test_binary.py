@@ -169,11 +169,13 @@ def test_ping_flood(ltx_helper):
         ltx_helper.expect_n_bytes(8)
 
 
-def test_exec(ltx_helper):
+def test_exec(ltx_helper, whereis):
     """
     Test EXEC command.
     """
-    ltx_helper.send(msgpack.packb([3, 0, "/usr/bin/uname"]))
+    paths = whereis("uname")
+
+    ltx_helper.send(msgpack.packb([3, 0, paths[0]]))
     log = ltx_helper.unpack_next()
     assert log[0] == 4
     assert log[1] == 0
@@ -189,12 +191,14 @@ def test_exec(ltx_helper):
     assert res[4] == 0
 
 
-def test_exec_echo(ltx_helper):
+def test_exec_echo(ltx_helper, whereis):
     """
     Test EXEC command echo.
     """
+    paths = whereis("echo")
+
     ltx_helper.send(msgpack.packb(
-        [3, 0, "/usr/bin/echo", "foo", "bar", "baz"]))
+        [3, 0, paths[0], "foo", "bar", "baz"]))
     log = ltx_helper.unpack_next()
     assert log[0] == 4
     assert log[1] == 0
@@ -245,11 +249,13 @@ def test_get_file(ltx_helper, tmp_path):
     assert data[1] == pattern
 
 
-def test_kill(ltx_helper):
+def test_kill(ltx_helper, whereis):
     """
     Test KILL command.
     """
-    ltx_helper.send(msgpack.packb([3, 1, "/usr/bin/sleep", "10"]))
+    paths = whereis("sleep")
+
+    ltx_helper.send(msgpack.packb([3, 1, paths[0], "10"]))
     time.sleep(0.1)
     ltx_helper.send(msgpack.packb([9, 1]))
 

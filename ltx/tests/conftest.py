@@ -4,6 +4,7 @@ Tests configuration file.
 import os
 import logging
 import subprocess
+from sys import stdout
 import pytest
 
 
@@ -75,3 +76,18 @@ def setup_binary(ltx_compile, ltx_bin_dir):
 
     if os.path.isfile(ltx_bin_dir):
         os.remove(ltx_bin_dir)
+
+
+@pytest.fixture
+def whereis():
+    """
+    Wrapper around whereis command.
+    """
+    def _callback(binary):
+        stdout = subprocess.check_output([f"whereis {binary}"], shell=True)
+        paths = stdout.decode().split()[1:]
+
+        assert len(paths) > 0
+        return paths
+
+    yield _callback
