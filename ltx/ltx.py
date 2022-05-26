@@ -246,9 +246,6 @@ class LTX:
 
         end_t = self._send_and_reply(msg, validate_msg, timeout=timeout)
 
-        if 0 > end_t >= time.time_ns():
-            raise LTXError("Out of bound read PONG time")
-
         self._logger.info("PONG epoch time: %d nanoseconds", end_t)
 
         return end_t
