@@ -37,7 +37,7 @@ jobs:
 
           - container: "opensuse/leap"
             env:
-              INSTALL_PYTHON: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install gcc clang python3-pip
+              INSTALL_DEPS: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install gcc clang git-lfs
 
           - container: "alpine:latest"
             env:
@@ -52,19 +52,16 @@ jobs:
     - name: Show OS
       run: cat /etc/os-release
 
-    - name: Git checkout
-      uses: actions/checkout@v3
-
-    - name: Install python
+    - name: Install dependences
       run: |
         echo $INSTALL_PYTHON 
         eval $INSTALL_PYTHON
 
-    - name: Install dependencies
-      run: |
-        python3 -m pip install --upgrade pip
-        python3 -m pip install pytest
-        python3 -m pip install -e .
+    - name: Git checkout
+      uses: actions/checkout@v3
+
+    - name: Build using GCC
+      run: gcc ltx/ltx.c -o gcc.out
 
     - name: Test with pytest
       run: pytest ltx/tests
