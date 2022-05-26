@@ -1,0 +1,70 @@
+# Copyright (c) 2022 Andrea Cervesato <andrea.cervesato@suse.com>
+
+name: "Test LTX package"
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - container: "debian:stable"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+
+          - container: "debian:testing"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+
+          - container: "ubuntu:impish"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+
+          - container: "ubuntu:xenial"
+            env:
+              DEBIAN_FRONTEND: noninteractive 
+              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+
+          - container: "fedora:latest"
+            env:
+              INSTALL_PYTHON: yum update -y && yum install -y gcc clang python3-pip
+
+          - container: "opensuse/leap"
+            env:
+              INSTALL_PYTHON: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install gcc clang python3-pip
+
+          - container: "alpine:latest"
+            env:
+              INSTALL_PYTHON: apk update && apk add build-base linux-headers libexecinfo libexecinfo-dev clang py3-pip
+
+    container:
+      image: ${{ matrix.container }}
+      env: ${{ matrix.env }}
+      options: --security-opt seccomp=unconfined
+
+    steps:
+    - name: Show OS
+      run: cat /etc/os-release
+
+    - name: Git checkout
+      uses: actions/checkout@v3
+
+    - name: Install python
+      run: |
+        echo $INSTALL_PYTHON 
+        eval $INSTALL_PYTHON
+
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pytest
+        python3 -m pip install -e .
+
+    - name: Test with pytest
+      run: pytest ltx/tests
