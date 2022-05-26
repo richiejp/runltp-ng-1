@@ -39,6 +39,13 @@ class TestLTX:
             time_ns = ltx.ping()
             assert time_ns > 0
 
+    def test_ping_timeout(self, ltx):
+        """
+        Test ping method on timeout.
+        """
+        with pytest.raises(LTXError):
+            ltx.ping(timeout=0)
+
     def test_reserve(self, ltx):
         """
         Test table_id reservation.
@@ -68,6 +75,14 @@ class TestLTX:
             assert time_ns > 0
             assert si_code == 1
             assert si_status == 0
+
+    def test_execute_timeout(self, ltx):
+        """
+        Test execute method on timeout.
+        """
+        table_id = ltx.reserve()
+        with pytest.raises(LTXError):
+            ltx.execute(table_id, "sleep 10", timeout=0)
 
     @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
     def test_kill(self, ltx, count):
@@ -147,6 +162,13 @@ class TestLTX:
             assert si_code == 1
             assert si_status == 0
 
+    def test_env_timeout(self, ltx):
+        """
+        Test env method on timeout.
+        """
+        with pytest.raises(LTXError):
+            ltx.env(None, "HELLO", "world", timeout=0)
+
     def test_get_file(self, tmp_path, ltx):
         """
         Test get_file method.
@@ -160,6 +182,18 @@ class TestLTX:
 
         assert data == pattern
 
+    def test_get_file_timeout(self, tmp_path, ltx):
+        """
+        Test get_file method on timeout.
+        """
+        pattern = b'AaXa\x00\x01\x02Zz' * 2048
+
+        myfile = tmp_path / "file.txt"
+        myfile.write_bytes(pattern)
+
+        with pytest.raises(LTXError):
+            ltx.get_file(myfile.as_posix(), timeout=0)
+
     def test_set_file(self, tmp_path, ltx):
         """
         Test set_file method.
@@ -172,3 +206,14 @@ class TestLTX:
 
         content = myfile.read_bytes()
         assert content == pattern
+
+    def test_set_file_timeout(self, tmp_path, ltx):
+        """
+        Test set_file method on timeout.
+        """
+        pattern = b'AaXa\x00\x01\x02Zz' * 2048
+
+        myfile = tmp_path / "file.txt"
+
+        with pytest.raises(LTXError):
+            ltx.set_file(myfile.as_posix(), pattern, timeout=0)

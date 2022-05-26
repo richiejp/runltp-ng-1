@@ -122,6 +122,7 @@ class LTX:
                 events = poller.poll(1)
 
                 if time.time() - start_t > timeout:
+                    self._logger.info("Command timed out")
                     raise LTXError("Timeout reached when waiting for reply")
 
                 for fdesc, _ in events:
@@ -219,9 +220,11 @@ class LTX:
 
         return version
 
-    def ping(self) -> int:
+    def ping(self, timeout: float = 10) -> int:
         """
         Ping executor and wait for pong.
+        :param timeout: time before raising a timeout during execution
+        :type timeout: float
         :returns: nanoseconds between pong and epoch
         """
         self._logger.info("Sending ping")
@@ -241,7 +244,7 @@ class LTX:
 
         msg = [LTX.PING]
 
-        end_t = self._send_and_reply(msg, validate_msg, timeout=10)
+        end_t = self._send_and_reply(msg, validate_msg, timeout=timeout)
 
         if 0 > end_t >= time.time_ns():
             raise LTXError("Out of bound read PONG time")
@@ -250,7 +253,11 @@ class LTX:
 
         return end_t
 
-    def env(self, table_id: int, key: str, value: str) -> None:
+    def env(self,
+            table_id: int,
+            key: str,
+            value: str,
+            timeout: float = 10) -> None:
         """
         Set environment variable on target.
         :param table_id: command table ID. It can be None if environment
@@ -260,6 +267,8 @@ class LTX:
         :type key: str
         :param value: value of the environment variable
         :type value: str
+        :param timeout: time before raising a timeout during execution
+        :type timeout: float
         """
         if table_id:
             self._check_table_id(table_id)
@@ -285,13 +294,15 @@ class LTX:
         self._send_and_reply(
             msg,
             validate_msg,
-            timeout=10)
+            timeout=timeout)
 
-    def get_file(self, path: str) -> bytes:
+    def get_file(self, path: str, timeout: float = 30) -> bytes:
         """
         Read a file on target and return its content.
         :param path: path of the file
         :type path: str
+        :param timeout: time before raising a timeout during execution
+        :type timeout: float
         :returns: file contents as bytes
         """
         if not path:
@@ -313,17 +324,19 @@ class LTX:
 
         msg = [LTX.GET_FILE, path]
 
-        data = self._send_and_reply(msg, validate_msg, timeout=30)
+        data = self._send_and_reply(msg, validate_msg, timeout=timeout)
 
         return data
 
-    def set_file(self, path: str, data: bytes) -> None:
+    def set_file(self, path: str, data: bytes, timeout: float = 30) -> None:
         """
         Send a file on target.
         :param path: path of the file to write
         :type path: str
         :param data: data to write on file
         :type data: bytes
+        :param timeout: time before raising a timeout during execution
+        :type timeout: float
         """
         if not path:
             raise ValueError("path is empty")
@@ -347,7 +360,7 @@ class LTX:
 
         msg = [LTX.SET_FILE, path, data]
 
-        self._send_and_reply(msg, validate_msg, timeout=30)
+        self._send_and_reply(msg, validate_msg, timeout=timeout)
 
     def execute(self,
                 table_id: int,
@@ -360,6 +373,11 @@ class LTX:
         :type table_id: int
         :param command: command to run
         :type command: str
+        :param timeout: time before raising a timeout during execution
+        :type timeout: float
+        :param stdout_callback: raised when new data is acquired during
+            command execution
+        :type stdout_callback: callable
         :returns: stdout, time_ns, si_code, si_status
         """
         self._check_table_id(table_id)
