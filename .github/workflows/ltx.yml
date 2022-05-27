@@ -62,3 +62,6 @@ jobs:
 
     - name: Build using GCC
       run: gcc ltx/ltx.c -o gcc.out
+
+    - name: Build using Clang
+      run: clang ltx/ltx.c -o gcc.out
