@@ -30,7 +30,18 @@
 #define LTX_POS ((struct ltx_pos){ __FILE__, __func__, __LINE__ })
 #define LTX_LOG(fmt, ...) ltx_log(LTX_POS, fmt, ##__VA_ARGS__)
 
-#define ltx_assert(expr, fmt, ...) do {				\
+#ifdef __GLIBC__
+#define PRINT_BACKTRACE do { \
+	void *buf[BUFSIZ];						\
+	int i, nptrs = backtrace(buf, BUFSIZ);				\
+	for (i = 0; i < nptrs; i++)					\
+		fprintf(stderr, "\t%p\n", buf[i]);			\
+} while(0);
+#else
+#define PRINT_BACKTRACE do {} while(0);
+#endif
+
+#define ltx_assert(expr, fmt, ...) do {					\
 	if (expr)							\
 		break;							\
 									\
@@ -38,10 +49,7 @@
 		"Fatal assertion '" #expr "': " fmt,			\
 		##__VA_ARGS__);						\
 									\
-	void *buf[BUFSIZ];						\
-	int i, nptrs = backtrace(buf, BUFSIZ);				\
-	for (i = 0; i < nptrs; i++)					\
-		fprintf(stderr, "\t%p\n", buf[i]);			\
+	PRINT_BACKTRACE							\
 	exit(1);							\
 } while (0);
 
