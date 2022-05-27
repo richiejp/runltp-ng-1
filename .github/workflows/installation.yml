@@ -37,7 +37,7 @@ jobs:
 
           - container: "opensuse/leap"
             env:
-              INSTALL_PYTHON: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install python3-pip git-lfs
+              INSTALL_PYTHON: zypper --non-interactive refresh && zypper --non-interactive --ignore-unknown install python3-pip git-lfs tar
 
           - container: "alpine:latest"
             env:
