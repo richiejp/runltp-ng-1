@@ -14,26 +14,26 @@ jobs:
           - container: "debian:stable"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+              INSTALL_DEPS: apt-get update && apt-get -y install gcc clang
 
           - container: "debian:testing"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+              INSTALL_DEPS: apt-get update && apt-get -y install gcc clang
 
           - container: "ubuntu:impish"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+              INSTALL_DEPS: apt-get update && apt-get -y install gcc clang
 
           - container: "ubuntu:xenial"
             env:
               DEBIAN_FRONTEND: noninteractive 
-              INSTALL_PYTHON: apt-get update && apt-get -y install gcc clang python3-pip
+              INSTALL_DEPS: apt-get update && apt-get -y install gcc clang
 
           - container: "fedora:latest"
             env:
-              INSTALL_PYTHON: yum update -y && yum install -y gcc clang python3-pip
+              INSTALL_DEPS: yum update -y && yum install -y gcc clang
 
           - container: "opensuse/leap"
             env:
@@ -41,7 +41,7 @@ jobs:
 
           - container: "alpine:latest"
             env:
-              INSTALL_PYTHON: apk update && apk add build-base linux-headers libexecinfo libexecinfo-dev clang py3-pip
+              INSTALL_DEPS: apk update && apk add build-base linux-headers libexecinfo libexecinfo-dev clang
 
     container:
       image: ${{ matrix.container }}
@@ -54,8 +54,8 @@ jobs:
 
     - name: Install dependences
       run: |
-        echo $INSTALL_PYTHON 
-        eval $INSTALL_PYTHON
+        echo $INSTALL_DEPS 
+        eval $INSTALL_DEPS
 
     - name: Git checkout
       uses: actions/checkout@v3
