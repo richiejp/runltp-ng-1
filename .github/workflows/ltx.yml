@@ -62,6 +62,3 @@ jobs:
 
     - name: Build using GCC
       run: gcc ltx/ltx.c -o gcc.out
-
-    - name: Test with pytest
-      run: pytest ltx/tests
