@@ -90,7 +90,7 @@ specified then it is set for all.
 
 `table_id`: positive fixint | nil
 `key`: fixstr | str 8
-`value`: fixstr | str 8
+`value`: fixstr | str 8 | str 16
 
 `[2, table_id, key, value]`
 
