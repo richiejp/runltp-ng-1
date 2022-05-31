@@ -299,6 +299,25 @@ class VirtualMachine(SUT):
 
         self._logged = True
 
+    @property
+    def is_running(self) -> bool:
+        raise NotImplementedError()
+
+    def run_command(self,
+                    command: str,
+                    timeout: int = 3600,
+                    cwd: str = None,
+                    env: dict = None,
+                    stdout_callback: callable = None) -> dict:
+        raise NotImplementedError()
+
+    def fetch_file(
+            self,
+            target_path: str,
+            local_path: str,
+            timeout: int = 3600) -> None:
+        raise NotImplementedError()
+
 
 class QemuSUT(VirtualMachine):
     """
