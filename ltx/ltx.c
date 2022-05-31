@@ -173,9 +173,10 @@ struct ltx_child {
 	pid_t pid;
 	int fd;
 	char args[ARG_MAX/2];
-	char *argv[16];
-	char env[ARG_MAX/2];
-	char *envv[32];
+	char env_ks[ARG_MAX/16];
+	uint16_t env_ksv[256];
+	char env_vs[ARG_MAX/2];
+	uint16_t env_vsv[256];
 };
 
 static struct ltx_ev_source ltx_in = {
@@ -204,6 +205,12 @@ __attribute__((const, warn_unused_result))
 static size_t ltx_min_sz(const size_t a, const size_t b)
 {
 	return a < b ? a : b;
+}
+
+__attribute__((const, warn_unused_result))
+static size_t ltx_max_sz(const size_t a, const size_t b)
+{
+	return a > b ? a : b;
 }
 
 __attribute__((pure, nonnull, warn_unused_result))
@@ -589,20 +596,20 @@ static void ltx_msg_echo(struct ltx_cursor *cur)
 static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 {
 	uint8_t table_id;
-	char argsv_buf[BUFSIZ];
-	char *argsv[16];
+	char *argsv[256];
 	pid_t pid;
 	struct ltx_child *child;
 	int c, pipefd[2];
 
 	table_id = ltx_cur_shift(cur);
 	ltx_assert(table_id < 0x7f, "Exec: (table_id = %u) > 127", table_id);
-	ltx_assert(args_n - 1 < 16, "Exec: Too many arguments: %u", args_n);
+	ltx_assert(args_n - 1 < 256, "Exec: Too many arguments: %u", args_n);
 
 	if (!cur->left)
 		return 0;
 
-	argsv[0] = argsv_buf;
+	child = childs + table_id;
+	argsv[0] = child->args;
 	for (c = 0; c < args_n - 1; c++) {
 		struct ltx_str path = ltx_read_str(cur);
 
@@ -617,7 +624,6 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 	ltx_msg_echo(cur);
 
 	LTX_EXP_0(pipe2(pipefd, O_CLOEXEC));
-	child = childs + table_id;
 	child->fd = pipefd[0];
 	ltx_epoll_add(&child->ev_source, EPOLLOUT);
 	pid = LTX_EXP_POS(fork());
@@ -627,6 +633,16 @@ static int process_exec_msg(struct ltx_cursor *cur, const uint8_t args_n)
 		childs[table_id].pid = pid;
 		child_pids[table_id] = pid;
 		return 1;
+	}
+
+	for (int i = 0; i < 256; i++) {
+		const char *const key = child->env_ks + child->env_ksv[i];
+		const char *const val = child->env_vs + child->env_vsv[i];
+
+		if (!child->env_ksv[i + 1])
+			break;
+
+		LTX_EXP_0(setenv(key, val, 1));
 	}
 
 	LTX_EXP_POS(dup2(pipefd[1], STDERR_FILENO));
@@ -741,11 +757,14 @@ static int process_env_msg(struct ltx_cursor *const cur)
 	const uint8_t table_id = ltx_cur_shift(cur);
 	if (!cur->left)
 		return 0;
+	ltx_assert(table_id == msgp_nil || table_id < 128,
+		   "Env: table_id=%u", table_id);
+
 	char ckey[256];
 	struct ltx_str key = ltx_read_str(cur);
 	if (!key.data)
 		return 0;
-	ltx_assert(key.len < 256, "Env: key.len=%zu", key.len);
+	ltx_assert(key.len && key.len < 256, "Env: key.len=%zu", key.len);
 
 	char cval[PATH_MAX];
 	struct ltx_str val = ltx_read_str(cur);
@@ -753,36 +772,54 @@ static int process_env_msg(struct ltx_cursor *const cur)
 		return 0;
 	ltx_assert(val.len < PATH_MAX, "Env: val.len=%zu", val.len);
 
-	if (table_id == ltx_nil) {
+	ltx_msg_echo(cur);
+
+	if (table_id == msgp_nil) {
 		ltx_to_cstring(&key, ckey);
 		ltx_to_cstring(&val, cval);
 		LTX_EXP_0(setenv(ckey, cval, 1));
 		return 1;
 	}
 
-	for (i = 0; i < 32; i += 2) {
-		char *kv = childs[table_id].envv[i];
+	struct ltx_child *child = childs + table_id;
+	for (i = 0; i < 256; i++) {
+		size_t cur_off = child->env_ksv[i];
+		size_t nxt_off = child->env_ksv[i + 1];
+		size_t new_off = cur_off + key.len + 1;
+		size_t cur_len = nxt_off ? nxt_off - cur_off : 0;
+		char *cur = child->env_ks + cur_off;
 
-		if (kv && *kv)
-			continue;
-
-		if (!kv) {
-			ltx_assert(!i, "Env: Not first slot?");
-			kv = childs[table_id].env;
-			childs[table_id].envv[0] = kv;
+		if (!cur_len) {
+			memcpy(cur, key.data, key.len);
+			cur[key.len] = '\0';
+			ltx_assert(new_off < ARG_MAX/16,
+				   "Ran out of env key space: %zu", new_off);
+			child->env_ksv[i + 1] = new_off;
+			break;
 		}
 
-		ltx_to_cstring(&key, kv);
-		kv += key.len + 1;
-		ltx_to_cstring(&val, kv);
-		kv += val.len + 1;
-
-		childs[table_id].envv[i + 2] = kv;
-
-		break;
+		if (key.len + 1 == cur_len && !memcmp(cur, key.data, key.len))
+			break;
 	}
 
-	ltx_assert(i < 32, "Env: Ran out of slots on %u", table_id);
+	ltx_assert(i < 255, "Ran out of env slots in %u", table_id);
+
+	size_t cur_off = child->env_vsv[i];
+	size_t nxt_off = child->env_vsv[i + 1];
+	size_t new_off = cur_off + val.len + 1;
+	size_t slot_len = nxt_off ? nxt_off - cur_off : 0;
+
+	ltx_assert(new_off < ARG_MAX/2,
+		   "Ran out of env value space: %zu", new_off);
+
+	if (slot_len && slot_len != val.len + 1) {
+		memmove(child->env_vs + new_off,
+			child->env_vs + nxt_off,
+			ARG_MAX/2 - ltx_max_sz(nxt_off, new_off));
+	}
+
+	child->env_vsv[i + 1] = new_off;
+	ltx_to_cstring(&val, child->env_vs + cur_off);
 
 	return 1;
 }
@@ -827,8 +864,8 @@ static void process_msgs(void)
 		case ltx_msg_pong:
 			ltx_assert(!ltx_msg_pong, "Not handled by executor");
 		case ltx_msg_env:
-			ltx_assert(msg_arr_len == 3,
-				   "Env: (msg_arr_len = %u) != 3",
+			ltx_assert(msg_arr_len == 4,
+				   "Env: (msg_arr_len = %u) != 4",
 				   msg_arr_len);
 
 			if (!cur.left)
