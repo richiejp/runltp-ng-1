@@ -86,7 +86,7 @@ Pong was sent.
 ### Env
 
 Sent to LTX to set an environment variable. If no table_id is
-specified then it is set for all.
+specified then it is set for ltx itself and all sub processes.
 
 `table_id`: positive fixint | nil
 `key`: fixstr | str 8
