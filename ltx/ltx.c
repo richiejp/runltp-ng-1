@@ -2,12 +2,10 @@
 #define _GNU_SOURCE
 
 #include <execinfo.h>
-#include <errno.h>
 #include <endian.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -18,12 +16,13 @@
 #include <limits.h>
 
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/uio.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
 #include <sys/sendfile.h>
+
+#include "errnos.h"
 
 #define VERSION "0.0.1-dev"
 
@@ -438,7 +437,7 @@ static int ltx_exp_fd(const struct ltx_pos pos,
 	if (fd > -1)
 		return fd;
 
-	ltx_log(pos, "Invalid FD: %s = %d: %s", expr, fd, strerrorname_np(errno));
+	ltx_log(pos, "Invalid FD: %s = %d: %s", expr, fd, ltx_strerrno(errno));
 
 	exit(1);
 }
@@ -451,7 +450,7 @@ static void ltx_exp_0(const struct ltx_pos pos,
 	if (!ret)
 		return;
 
-	ltx_log(pos, "Not Zero: %s = %d: %s", expr, ret, strerrorname_np(errno));
+	ltx_log(pos, "Not Zero: %s = %d: %s", expr, ret, ltx_strerrno(errno));
 
 	exit(1);
 }
@@ -464,7 +463,7 @@ static int ltx_exp_pos(const struct ltx_pos pos,
 	if (ret > -1)
 		return ret;
 
-	ltx_log(pos, "Not positive: %s = %d: %s", expr, ret, strerrorname_np(errno));
+	ltx_log(pos, "Not positive: %s = %d: %s", expr, ret, ltx_strerrno(errno));
 
 	exit(1);
 }
@@ -505,7 +504,7 @@ static void drain_write_buf(void)
 
 		ltx_assert(olen > -1,
 			   "write(out_fd, out_buf.data, %zu): %s",
-			   out_buf.used, strerrorname_np(errno));
+			   out_buf.used, ltx_strerrno(errno));
 
 		out_buf.off += olen;
 		out_buf.used -= olen;
