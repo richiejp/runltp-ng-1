@@ -3,15 +3,132 @@ Unittests for SUT package.
 """
 import os
 import time
+import signal
+import logging
 import threading
 import pytest
 from ltp.sut import HostSUT
 from ltp.sut import QemuSUT
 from ltp.sut import SSHSUT
 from ltp.sut import SUTError
+from ltp.sut import SUTTimeoutError
 
 TEST_QEMU_IMAGE = os.environ.get("TEST_QEMU_IMAGE", None)
 TEST_QEMU_PASSWORD = os.environ.get("TEST_QEMU_PASSWORD", None)
+TEST_SSH_PASSWORD = os.environ.get("TEST_SSH_PASSWORD", None)
+
+
+class _TestDataTransfer:
+    """
+    Generic tests for various data transfer implementations.
+    """
+
+    @pytest.fixture
+    def transfer_client(self):
+        """
+        Implement this fixture to test data transfer.
+        """
+        pass
+
+    def test_fetch_file_bad_args(self, tmpdir, transfer_client):
+        """
+        Test fetch_file method with bad arguments.
+        """
+        with pytest.raises(ValueError):
+            transfer_client.fetch_file(None, "local_file")
+
+        target_path = tmpdir / "target_file"
+        target_path.write("runltp-ng tests")
+        with pytest.raises(ValueError):
+            transfer_client.fetch_file(str(target_path), None)
+
+        with pytest.raises(ValueError):
+            transfer_client.fetch_file("this_file_doesnt_exist", None)
+
+    def test_fetch_file(self, tmpdir, transfer_client):
+        """
+        Test fetch_file method.
+        """
+        transfer_client.communicate()
+
+        try:
+            for i in range(0, 5):
+                local_path = tmpdir / f"local_file{i}"
+                target_path = tmpdir / f"target_file{i}"
+                target_path.write("runltp-ng tests")
+
+                target = str(target_path)
+                local = str(local_path)
+
+                transfer_client.fetch_file(target, local)
+
+                assert os.path.isfile(local)
+                assert open(target, 'r').read() == "runltp-ng tests"
+        finally:
+            transfer_client.stop()
+
+    def test_stop_fetch_file(self, tmpdir, transfer_client):
+        """
+        Test stop method when running fetch_file.
+        """
+        local_path = tmpdir / "local_file"
+        target_path = tmpdir / "target_file"
+
+        target = str(target_path)
+        local = str(local_path)
+
+        # create a big file to have enough IO traffic and slow
+        # down fetch_file() method
+        with open(target, 'wb') as ftarget:
+            ftarget.seek(1*1024*1024*1024-1)
+            ftarget.write(b'\0')
+
+        def _threaded():
+            transfer_client.communicate()
+            transfer_client.fetch_file(target, local)
+
+        thread = threading.Thread(target=_threaded)
+        thread.start()
+
+        start_t = time.time()
+        while not transfer_client.is_running:
+            time.sleep(0.05)
+            assert time.time() - start_t < 10
+
+        # wait for local file creation before stop
+        start_t = time.time()
+        while not os.path.isfile(local_path):
+            time.sleep(0.05)
+            assert time.time() - start_t < 60
+
+        transfer_client.stop()
+        thread.join()
+
+        target_size = os.stat(target).st_size
+        local_size = os.stat(local).st_size
+
+        assert target_size != local_size
+
+    def test_fetch_file_timeout(self, tmpdir, transfer_client):
+        """
+        Test stop method when running fetch_file.
+        """
+        local_path = tmpdir / "local_file"
+        target_path = tmpdir / "target_file"
+
+        target = str(target_path)
+        local = str(local_path)
+
+        # create a big file to have enough IO traffic and slow
+        # down fetch_file() method
+        with open(target, 'wb') as ftarget:
+            ftarget.seek(1*1024*1024*1024-1)
+            ftarget.write(b'\0')
+
+        transfer_client.communicate()
+
+        with pytest.raises(SUTTimeoutError):
+            transfer_client.fetch_file(target, local, timeout=0)
 
 
 class TestHostSUT:
@@ -19,12 +136,16 @@ class TestHostSUT:
     Test HostSUT implementation.
     """
 
+    @pytest.fixture
+    def transfer_client(self):
+        yield HostSUT()
+
     def test_communicate(self):
         """
         Test communicate method.
         """
         sut = HostSUT()
-        for i in range(0, 10):
+        for _ in range(0, 10):
             sut.communicate()
             sut.stop()
 
@@ -33,79 +154,105 @@ class TestHostSUT:
             sut.communicate()
         sut.stop()
 
-    def test_communicate_run_cmd(self):
+    def test_run_command(self):
         """
-        Test communicate method and use channel to run a command
-        multiple times.
+        Test run_command method.
         """
-        sut = HostSUT()
-        sut.communicate()
+        ret = HostSUT().run_command("test", timeout=1)
+        assert ret["command"] == "test"
+        assert ret["returncode"] == 1
+        assert ret["stdout"] == ""
+        assert ret["timeout"] == 1
+        assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] is None
 
-        assert sut.channel
-
-        for _ in range(0, 100):
-            ret = sut.channel.run_cmd("echo 'hello world'", 1)
-            assert 'hello world' in ret["stdout"]
-            assert ret["returncode"] == 0
-            assert ret["exec_time"] > 0
-            assert ret["timeout"] == 1
-            assert ret["command"] == "echo 'hello world'"
-
-        sut.stop(timeout=1)
-
-    def test_stop_during_run_cmd(self, tmpdir):
+    def test_run_command_timeout(self):
         """
-        Test stop method when running commands.
+        Test run_command method when timeout occurs.
         """
-        tmp = tmpdir / "tmp"
-        tmp.mkdir()
+        channel = HostSUT()
+        with pytest.raises(SUTTimeoutError):
+            channel.run_command("sleep 10", timeout=0)
 
-        sut = HostSUT()
-        sut.communicate()
+    def test_run_command_cwd(self, tmpdir):
+        """
+        Test run_command method using cwd initialization.
+        """
+        tmpfile = tmpdir / "myfile"
+        tmpfile.write("")
 
-        assert sut.channel is not None
+        ret = HostSUT().run_command("ls", timeout=10, cwd=str(tmpdir))
+        assert ret["command"] == "ls"
+        assert ret["returncode"] == 0
+        assert ret["stdout"] == "myfile\n"
+        assert ret["timeout"] == 10
+        assert ret["exec_time"] > 0
+        assert ret["cwd"] == str(tmpdir)
+        assert ret["env"] is None
 
-        def _threaded():
-            start_t = time.time()
-            while not sut.channel.is_running:
-                assert time.time() - start_t < 10
+    def test_run_command_env(self):
+        """
+        Test run_command method using environment variables.
+        """
+        env = dict(HELLO="world")
+        ret = HostSUT().run_command(
+            "echo -n $HELLO",
+            timeout=10,
+            env=env)
+        assert ret["command"] == "echo -n $HELLO"
+        assert ret["returncode"] == 0
+        assert ret["stdout"] == "world"
+        assert ret["timeout"] == 10
+        assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] == env
 
-            sut.stop(timeout=10)
+    def test_stop_run_command(self):
+        """
+        Test stop method.
+        """
+        shell = HostSUT()
 
-        thread = threading.Thread(target=_threaded, daemon=True)
+        class MyThread(threading.Thread):
+            def __init__(self):
+                super(MyThread, self).__init__()
+                self.result = None
+                self.daemon = True
+
+            def run(self):
+                self.result = shell.run_command("sleep 10", timeout=20)
+
+        thread = MyThread()
         thread.start()
 
-        ret = sut.channel.run_cmd("sleep 5", timeout=10)
+        start_t = time.time()
+        while not shell.is_running:
+            time.sleep(0.01)
+            assert time.time() - start_t < 10
+
+        shell.stop()
+
         thread.join()
+        ret = thread.result
 
-        assert ret["returncode"] != 0
+        assert ret["command"] == "sleep 10"
+        assert ret["returncode"] == -signal.SIGTERM
+        assert ret["stdout"] == ""
+        assert ret["timeout"] == 20
+        assert ret["exec_time"] > 0
+        assert ret["cwd"] is None
+        assert ret["env"] is None
 
-    def test_force_stop_during_run_cmd(self, tmpdir):
+    def test_run_command_timeout(self):
         """
-        Test force_stop method when running commands.
+        Test run_command on timeout
         """
-        tmp = tmpdir / "tmp"
-        tmp.mkdir()
+        shell = HostSUT()
+        shell.communicate()
 
-        sut = HostSUT()
-        sut.communicate()
-
-        assert sut.channel is not None
-
-        def _threaded():
-            start_t = time.time()
-            while not sut.channel.is_running:
-                assert time.time() - start_t < 10
-
-            sut.force_stop(timeout=10)
-
-        thread = threading.Thread(target=_threaded, daemon=True)
-        thread.start()
-
-        ret = sut.channel.run_cmd("sleep 5", timeout=10)
-        thread.join()
-
-        assert ret["returncode"] != 0
+        with pytest.raises(SUTTimeoutError):
+            shell.run_command("test", timeout=0)
 
 
 @pytest.mark.qemu
@@ -113,149 +260,183 @@ class TestHostSUT:
 @pytest.mark.skipif(TEST_QEMU_PASSWORD is None, reason="TEST_QEMU_IMAGE is not defined")
 @pytest.mark.parametrize("image", [TEST_QEMU_IMAGE])
 @pytest.mark.parametrize("password", [TEST_QEMU_PASSWORD])
-class TestQemuSUT:
+class TestQemuSUT(_TestDataTransfer):
     """
     Test QemuSUT implementation.
     """
 
-    def test_communicate(self, tmpdir, image, password):
+    _logger = logging.getLogger("test.sut.qemu")
+
+    @pytest.fixture
+    def qemu(self, tmpdir, image, password):
+        runner = QemuSUT(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password)
+
+        yield runner
+
+    @pytest.fixture
+    def transfer_client(self, qemu):
+        yield qemu
+
+    def test_communicate(self, qemu):
         """
         Test communicate method.
         """
-        sut = QemuSUT(
-            tmpdir=str(tmpdir),
-            image=image,
-            password=password)
-
-        sut.communicate()
+        qemu.communicate(self._logger.info)
         with pytest.raises(SUTError):
-            sut.communicate()
-        sut.stop()
-
-    def test_stop_multiple_times(self, tmpdir, image, password):
-        """
-        Test stop when it's run multiple times.
-        """
-        sut = QemuSUT(
-            tmpdir=str(tmpdir),
-            image=image,
-            password=password)
-
-        sut.stop()
-        sut.communicate()
-        sut.stop()
-        sut.stop()
-        sut.stop()
-
-    @pytest.mark.parametrize("serial", ["isa", "virtio"])
-    def test_communicate_run_cmd(self, tmpdir, image, password, serial):
-        """
-        Test communicate method and use runner object to execute
-        commands on target.
-        """
-        sut = QemuSUT(
-            tmpdir=str(tmpdir),
-            image=image,
-            password=password,
-            serial=serial)
-
-        try:
-            sut.communicate()
-
-            assert sut.channel is not None
-
-            for _ in range(0, 100):
-                ret = sut.channel.run_cmd("echo 'hello world'", timeout=4)
-                assert 'hello world' in ret["stdout"]
-                assert ret["returncode"] == 0
-                assert ret["exec_time"] > 0
-                assert ret["timeout"] == 4
-                assert ret["command"] == "echo 'hello world'"
-        finally:
-            sut.stop()
+            qemu.communicate(self._logger.info)
+        qemu.stop()
 
     @pytest.mark.parametrize("force", [True, False])
-    def test_stop_during_communicate(self, tmpdir, image, password, force):
+    def test_stop_communicate(self, qemu, force):
         """
         Test stop method when running communicate.
         """
-        sut = QemuSUT(
-            tmpdir=str(tmpdir),
-            image=image,
-            password=password)
-
         def _threaded():
             time.sleep(1)
 
             if force:
-                sut.force_stop(timeout=4)
+                qemu.force_stop(timeout=4)
             else:
-                sut.stop(timeout=4)
+                qemu.stop(timeout=4)
 
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        sut.communicate()
+        qemu.communicate(self._logger.info)
 
         thread.join()
 
-        assert sut.channel is None
-
     @pytest.mark.parametrize("force", [True, False])
+    def test_stop_multiple_times(self, qemu, force):
+        """
+        Test stop when it's run multiple times.
+        """
+        if force:
+            qemu.force_stop(timeout=10)
+        else:
+            qemu.stop(timeout=10)
+
+        qemu.communicate(self._logger.info)
+
+        if force:
+            qemu.force_stop(timeout=10)
+        else:
+            qemu.stop(timeout=10)
+
+        if force:
+            qemu.force_stop(timeout=10)
+        else:
+            qemu.stop(timeout=10)
+
+        if force:
+            qemu.force_stop(timeout=10)
+        else:
+            qemu.stop(timeout=10)
+
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
-    def test_stop_during_run_cmd(self, tmpdir, image, password, serial, force):
+    def test_run_command(self, tmpdir, serial, image, password):
         """
-        Test stop method when running a command.
+        Test command run.
         """
-        sut = QemuSUT(
+        env = {"MYVAR": "hello"}
+
+        qemu = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             serial=serial)
 
         try:
-            sut.communicate()
+            qemu.communicate(self._logger.info)
 
-            assert sut.channel is not None
+            for _ in range(0, 100):
+                data = qemu.run_command(
+                    "echo $PWD-$MYVAR",
+                    timeout=1,
+                    env=env,
+                    cwd="/tmp")
+                assert data["command"] == "echo $PWD-$MYVAR"
+                assert data["timeout"] == 1
+                assert data["returncode"] == 0
+                assert f"/tmp-hello" in data["stdout"]
+                assert data["exec_time"] > 0
+                assert data["env"] == env
+                assert data["cwd"] == "/tmp"
+        finally:
+            qemu.stop()
+
+    @pytest.mark.parametrize("force", [True, False])
+    @pytest.mark.parametrize("serial", ["isa", "virtio"])
+    def test_stop_run_command(self, tmpdir, image, password, serial, force):
+        """
+        Test stop method when running a command.
+        """
+        qemu = QemuSUT(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password,
+            serial=serial)
+
+        try:
+            qemu.communicate(self._logger.info)
 
             def _threaded():
                 start_t = time.time()
-                while not sut.channel.is_running:
+                while not qemu.is_running:
                     assert time.time() - start_t < 10
 
                 time.sleep(1)
 
                 if force:
-                    sut.force_stop(timeout=10)
+                    qemu.force_stop(timeout=10)
                 else:
-                    sut.stop(timeout=10)
+                    qemu.stop(timeout=10)
 
             thread = threading.Thread(target=_threaded, daemon=True)
             thread.start()
 
-            ret = sut.channel.run_cmd("sleep 5", timeout=10)
+            ret = qemu.run_command("sleep 5", timeout=10)
             thread.join()
 
             assert ret["returncode"] != 0
         finally:
-            sut.stop()
+            qemu.stop()
 
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
-    def test_communicate_fetch_file(self, tmpdir, image, password, serial):
+    def test_run_command_timeout(self, tmpdir, image, password, serial):
         """
-        Test communicate method and use channel object to download
-        files from target to host.
+        Test timeout on command run.
         """
-        sut = QemuSUT(
+        qemu = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             serial=serial)
 
         try:
-            sut.communicate()
+            qemu.communicate(self._logger.info)
 
-            assert sut.channel is not None
+            with pytest.raises(SUTTimeoutError):
+                qemu.run_command("sleep 5", timeout=0)
+        finally:
+            qemu.stop()
+
+    @pytest.mark.parametrize("serial", ["isa", "virtio"])
+    def test_fetch_file(self, tmpdir, image, password, serial):
+        """
+        Test downloading files from target to host.
+        """
+        qemu = QemuSUT(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password,
+            serial=serial)
+
+        try:
+            qemu.communicate(self._logger.info)
 
             for i in range(0, 100):
                 target_path = f"/root/myfile{i}"
@@ -263,20 +444,20 @@ class TestQemuSUT:
                 message = f"hello world{i}"
 
                 # create file on target_path
-                ret = sut.channel.run_cmd(
+                ret = qemu.run_command(
                     f"echo '{message}' > {target_path}", 1)
                 assert ret["returncode"] == 0
 
                 # download file in local_path
-                sut.channel.fetch_file(target_path, local_path)
+                qemu.fetch_file(target_path, local_path)
                 with open(local_path, "r") as target:
                     assert target.read() == f"{message}\n"
         finally:
-            sut.stop()
+            qemu.stop()
 
     @pytest.mark.parametrize("force", [True, False])
     @pytest.mark.parametrize("serial", ["isa", "virtio"])
-    def test_stop_during_fetch_file(self, tmpdir, image, password, serial, force):
+    def test_stop_fetch_file(self, tmpdir, image, password, serial, force):
         """
         Test stop method when fetching data.
         """
@@ -284,83 +465,110 @@ class TestQemuSUT:
         local_path = str(tmpdir / f"myfile")
         message = f"hello world"
 
-        sut = QemuSUT(
+        qemu = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
             serial=serial)
 
-        sut.communicate()
-
-        assert sut.channel is not None
+        qemu.communicate(self._logger.info)
 
         # create file on target_path
-        ret = sut.channel.run_cmd(f"echo '{message}' > {target_path}")
+        ret = qemu.run_command(f"echo '{message}' > {target_path}")
         assert ret["returncode"] == 0
 
         def _threaded():
             start_t = time.time()
-            while not sut.channel.is_running:
+            while not qemu.is_running:
                 assert time.time() - start_t < 5
 
             if force:
-                sut.force_stop(timeout=10)
+                qemu.force_stop(timeout=10)
             else:
-                sut.stop(timeout=10)
+                qemu.stop(timeout=10)
 
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        sut.channel.fetch_file(target_path, local_path)
+        qemu.fetch_file(target_path, local_path)
 
         thread.join()
 
         with open(local_path, "r") as target:
             assert target.read() != f"{message}"
 
-    def test_communicate_image_overlay(self, tmpdir, image, password):
+    @pytest.mark.parametrize("serial", ["isa", "virtio"])
+    def test_fetch_file_timeout(self, tmpdir, image, password, serial):
+        """
+        Test timeout when downloading files from target to host.
+        """
+        qemu = QemuSUT(
+            tmpdir=str(tmpdir),
+            image=image,
+            password=password,
+            serial=serial)
+
+        try:
+            qemu.communicate(self._logger.info)
+
+            # create file on target_path
+            ret = qemu.run_command(
+                f"echo 'hello world' > /root/myfile", timeout=1)
+            assert ret["returncode"] == 0
+
+            with pytest.raises(SUTTimeoutError):
+                qemu.fetch_file("/root/myfile", "myfile", timeout=0)
+        finally:
+            qemu.stop()
+
+    @pytest.mark.parametrize("serial", ["isa", "virtio"])
+    def test_communicate_image_overlay(self, tmpdir, image, password, serial):
         """
         Test communicate method when using image_overlay.
         """
         img_overlay = tmpdir / "image_overlay.qcow2"
 
-        sut = QemuSUT(
+        qemu = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
+            serial=serial,
             image_overlay=img_overlay)
 
         try:
-            sut.communicate()
+            qemu.communicate(self._logger.info)
         finally:
-            sut.stop()
+            qemu.stop()
 
         assert os.path.isfile(img_overlay)
 
-    def test_communicate_virtfs(self, tmpdir, image, password):
+    @pytest.mark.parametrize("serial", ["isa", "virtio"])
+    def test_communicate_virtfs(self, tmpdir, image, password, serial):
         """
         Test communicate method when using virtfs.
         """
         myfile = tmpdir / "myfile"
         myfile.write("")
 
-        sut = QemuSUT(
+        qemu = QemuSUT(
             tmpdir=str(tmpdir),
             image=image,
             password=password,
+            serial=serial,
             virtfs=str(tmpdir))
 
         try:
-            sut.communicate()
+            qemu.communicate(self._logger.info)
 
-            ret = sut.channel.run_cmd(f"test -f /mnt/myfile", 1)
+            ret = qemu.run_command(f"test -f /mnt/myfile", 1)
             assert ret["returncode"] == 0
         finally:
-            sut.stop()
+            qemu.stop()
 
 
 @pytest.mark.ssh
-class TestSSHSUT:
+@pytest.mark.usefixtures("ssh_server")
+class TestSSHSUT(_TestDataTransfer):
     """
     Test the SSHSUT implementation.
     """
@@ -385,10 +593,196 @@ class TestSSHSUT:
 
         return Config()
 
-    @pytest.mark.usefixtures("ssh_server")
-    def test_communicate_run_cmd(self, config):
+    @pytest.fixture
+    def transfer_client(self, config):
+        yield SSHSUT(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key
+        )
+
+    def test_init(self, config):
         """
-        Test channel run_cmd after communicate.
+        Test class initializer.
+        """
+        with pytest.raises(ValueError):
+            SSHSUT(
+                host=None,
+                port=config.port,
+                user=config.user,
+                key_file=config.user_key)
+
+        with pytest.raises(ValueError):
+            SSHSUT(
+                host=config.hostname,
+                port=-100,
+                user=config.user,
+                key_file=config.user_key)
+
+        with pytest.raises(ValueError):
+            SSHSUT(
+                host=config.hostname,
+                port=config.port,
+                user=None,
+                key_file=config.user_key)
+
+        with pytest.raises(ValueError):
+            SSHSUT(
+                host=config.hostname,
+                port=config.port,
+                user=config.user,
+                key_file="this_key_doesnt_exist.key")
+
+    def test_bad_hostname(self, config):
+        """
+        Test connection when a bad hostname is given.
+        """
+        sut = SSHSUT(
+            host="127.0.0.2",
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+        with pytest.raises(SUTError):
+            sut.communicate()
+
+        sut.stop()
+
+    def test_bad_port(self, config):
+        """
+        Test connection when a bad port is given.
+        """
+        sut = SSHSUT(
+            host=config.hostname,
+            port=12345,
+            user=config.user,
+            key_file=config.user_key)
+
+        with pytest.raises(SUTError):
+            sut.communicate()
+
+        sut.stop()
+
+    def test_bad_user(self, config):
+        """
+        Test connection when a bad user is given.
+        """
+        sut = SSHSUT(
+            host=config.hostname,
+            port=config.port,
+            user="this_user_doesnt_exist",
+            key_file=config.user_key)
+
+        with pytest.raises(SUTError):
+            sut.communicate()
+
+        sut.stop()
+
+    def test_bad_key_file(self, config):
+        """
+        Test connection when a bad key file is given.
+        """
+        testsdir = os.path.abspath(os.path.dirname(__file__))
+        user_key_pub = os.path.sep.join([testsdir, 'id_rsa_bad'])
+
+        with pytest.raises(SUTError):
+            sut = SSHSUT(
+                host=config.hostname,
+                port=config.port,
+                user=config.user,
+                key_file=user_key_pub)
+            sut.communicate()
+
+        sut.stop()
+
+    def test_bad_password(self, config):
+        """
+        Test connection when a bad password is given.
+        """
+        sut = SSHSUT(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            password="wrong_password")
+
+        with pytest.raises(SUTError):
+            sut.communicate()
+
+        sut.stop()
+
+    def test_bad_auth(self, config):
+        """
+        Test a unsupported authentication method.
+        """
+        sut = SSHSUT(
+            host=config.hostname,
+            port=config.port,
+            user=config.user)
+
+        with pytest.raises(SUTError):
+            sut.communicate()
+
+    def test_is_running(self, config):
+        """
+        Test is_running property.
+        """
+        sut = SSHSUT(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+        sut.communicate()
+
+        def _threaded():
+            start_t = time.time()
+            while not sut.is_running:
+                time.sleep(0.05)
+                assert time.time() - start_t < 5
+
+        thread = threading.Thread(target=_threaded, daemon=True)
+        thread.start()
+
+        sut.run_command("sleep 0.5")
+
+        thread.join()
+        time.sleep(1)
+        sut.stop()
+
+    def test_connection_key_file(self, tmpdir, config):
+        """
+        Test connection using key_file.
+        """
+        sut = SSHSUT(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            key_file=config.user_key)
+
+        sut.communicate()
+
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
+
+        data = sut.run_command(
+            "echo $PWD-$MYVAR",
+            timeout=1,
+            env=env,
+            cwd=cwd)
+        sut.stop()
+
+        assert data["command"] == "echo $PWD-$MYVAR"
+        assert data["timeout"] == 1
+        assert data["returncode"] == 0
+        assert data["stdout"] == f"{str(tmpdir)}-hello\n"
+        assert data["exec_time"] > 0
+        assert data["env"] == env
+        assert data["cwd"] == cwd
+
+    def test_run_command(self, config):
+        """
+        Test channel run_command after communicate.
         """
         sut = SSHSUT(
             host=config.hostname,
@@ -399,10 +793,8 @@ class TestSSHSUT:
         try:
             sut.communicate()
 
-            assert sut.channel is not None
-
             for _ in range(0, 20):
-                ret = sut.channel.run_cmd("echo 'hello world'", 1)
+                ret = sut.run_command("echo 'hello world'", 1)
                 assert 'hello world' in ret["stdout"]
                 assert ret["returncode"] == 0
                 assert ret["exec_time"] > 0
@@ -411,11 +803,10 @@ class TestSSHSUT:
         finally:
             sut.stop()
 
-    @pytest.mark.usefixtures("ssh_server")
     @pytest.mark.parametrize("force", [True, False])
-    def test_stop_run_cmd(self, config, force):
+    def test_stop_run_command(self, config, force):
         """
-        Test stop after run_cmd.
+        Test stop after run_command.
         """
         sut = SSHSUT(
             host=config.hostname,
@@ -425,12 +816,12 @@ class TestSSHSUT:
 
         sut.communicate()
 
-        assert sut.channel is not None
-
         def _threaded():
             start_t = time.time()
-            while not sut.channel.is_running:
+            while not sut.is_running:
                 assert time.time() - start_t < 10
+
+            time.sleep(1)
 
             if force:
                 sut.force_stop(timeout=5)
@@ -440,54 +831,16 @@ class TestSSHSUT:
         thread = threading.Thread(target=_threaded, daemon=True)
         thread.start()
 
-        ret = sut.channel.run_cmd("sleep 4")
+        ret = sut.run_command("sleep 4")
 
         thread.join()
 
         assert ret["returncode"] != 0
 
-    @pytest.mark.usefixtures("ssh_server")
-    def test_communicate_fetch_file(self, tmpdir, config):
+    def test_run_command_timeout(self, config):
         """
-        Test channel fetch_file after communicate.
+        Test run_command when going in timeout.
         """
-        target_folder = tmpdir.mkdir("target")
-
-        sut = SSHSUT(
-            host=config.hostname,
-            port=config.port,
-            user=config.user,
-            key_file=config.user_key)
-
-        try:
-            sut.communicate()
-
-            assert sut.channel is not None
-
-            for i in range(0, 20):
-                target_path = f"/{str(target_folder)}/myfile{i}"
-                message = f"hello world{i}"
-
-                with open(target_path, "w") as tpath:
-                    tpath.write(message)
-
-                local_path = str(tmpdir / f"myfile{i}")
-
-                # download file in local_path
-                sut.channel.fetch_file(target_path, local_path)
-                with open(local_path, "r") as target:
-                    assert target.read() == f"{message}"
-        finally:
-            sut.stop()
-
-    @pytest.mark.usefixtures("ssh_server")
-    @pytest.mark.parametrize("force", [True, False])
-    def test_force_stop_fetch_file(self, tmpdir, config, force):
-        """
-        Test force_stop after fetch_file.
-        """
-        target_folder = tmpdir.mkdir("target")
-
         sut = SSHSUT(
             host=config.hostname,
             port=config.port,
@@ -496,30 +849,36 @@ class TestSSHSUT:
 
         sut.communicate()
 
-        assert sut.channel is not None
+        with pytest.raises(SUTTimeoutError):
+            sut.run_command("sleep 4", timeout=0)
 
-        def _threaded():
-            start_t = time.time()
-            while not sut.channel.is_running:
-                assert time.time() - start_t < 10
+    @pytest.mark.skipif(TEST_SSH_PASSWORD is None, reason="Empty SSH password")
+    def test_connection_user_password(self, tmpdir, config):
+        """
+        Test connection using username/password.
+        """
+        sut = SSHSUT(
+            host=config.hostname,
+            port=config.port,
+            user=config.user,
+            password=TEST_SSH_PASSWORD)
 
-            if force:
-                sut.force_stop(timeout=5)
-            else:
-                sut.stop(timeout=5)
+        env = {"MYVAR": "hello"}
+        cwd = str(tmpdir)
 
-        thread = threading.Thread(target=_threaded, daemon=True)
-        thread.start()
+        sut.communicate()
 
-        target_path = f"/{str(target_folder)}/myfile"
-        message = "hello world"
+        data = sut.run_command(
+            "echo $PWD-$MYVAR",
+            timeout=1,
+            env=env,
+            cwd=cwd)
+        sut.stop()
 
-        with open(target_path, "w") as tpath:
-            tpath.write(message)
-
-        local_path = str(tmpdir / "myfile")
-
-        # download file in local_path
-        sut.channel.fetch_file(target_path, local_path)
-
-        thread.join()
+        assert data["command"] == "echo $PWD-$MYVAR"
+        assert data["timeout"] == 1
+        assert data["returncode"] == 0
+        assert data["stdout"] == f"{str(tmpdir)}-hello\n"
+        assert data["exec_time"] > 0
+        assert data["env"] == env
+        assert data["cwd"] == cwd
