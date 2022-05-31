@@ -12,7 +12,6 @@ import pathlib
 import tempfile
 import logging
 from ltp import LTPException
-from ltp.channel import ChannelError
 from ltp.install import INSTALLERS
 from ltp.install import Installer
 from ltp.install import InstallerError
@@ -22,6 +21,7 @@ from ltp.sut import SUT
 from ltp.sut import HostSUT
 from ltp.sut import SSHSUT
 from ltp.sut import QemuSUT
+from ltp.sut.base import SUTError
 from ltp.ui import SimpleConsoleEvents
 from ltp.dispatcher import SerialDispatcher
 
@@ -163,7 +163,7 @@ class Session:
         """
         Return the proper installer according with SUT distribution.
         """
-        result = sut.channel.run_cmd(". /etc/os-release && echo $ID")
+        result = sut.run_command(". /etc/os-release && echo $ID")
         if result["returncode"] != 0:
             raise InstallerError("Can't find os-release on target")
 
@@ -184,7 +184,7 @@ class Session:
                 raise_err: bool = True,
                 stdout_callback: callable = None) -> None:
             try:
-                ret = sut.channel.run_cmd(
+                ret = sut.run_command(
                     cmd,
                     timeout=3600,
                     cwd=cwd,
@@ -193,7 +193,7 @@ class Session:
                 if ret["returncode"] != 0:
                     stdout = ret["stdout"]
                     raise InstallerError(f"'{cmd}' execution error: {stdout}")
-            except ChannelError as err:
+            except SUTError as err:
                 if raise_err:
                     raise err
 
@@ -290,7 +290,7 @@ class Session:
 
         self._events.sut_stop(sut.name)
 
-        if sut.channel:
+        if sut.is_running:
             sut.stop(timeout=timeout)
         else:
             sut.force_stop(timeout=timeout)
@@ -355,7 +355,7 @@ class Session:
                 def _mystdout_line(line):
                     self._events.run_cmd_stdout(line)
 
-                ret = sut.channel.run_cmd(
+                ret = sut.run_command(
                     command,
                     timeout=self._exec_timeout,
                     stdout_callback=_mystdout_line)
