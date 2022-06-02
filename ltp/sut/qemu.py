@@ -369,6 +369,8 @@ class QemuSUT(VirtualMachine):
                 self._stop_running_command(timeout)
                 self._stop_fetching_data(timeout)
 
+        self._initialized = False
+
         super().stop(timeout)
 
     def force_stop(self, timeout: int = 30) -> None:
