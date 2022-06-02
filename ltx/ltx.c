@@ -1,7 +1,9 @@
 #include <linux/limits.h>
 #define _GNU_SOURCE
 
+#ifdef __GLIBC__
 #include <execinfo.h>
+#endif
 #include <endian.h>
 #include <fcntl.h>
 #include <stdarg.h>
