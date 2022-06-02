@@ -1,9 +1,6 @@
 #include <linux/limits.h>
 #define _GNU_SOURCE
 
-#ifdef __GLIBC__
-#include <execinfo.h>
-#endif
 #include <endian.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -16,6 +13,10 @@
 #include <signal.h>
 #include <time.h>
 #include <limits.h>
+
+#ifdef __GLIBC__
+#include <execinfo.h>
+#endif
 
 #include <sys/stat.h>
 #include <sys/wait.h>
