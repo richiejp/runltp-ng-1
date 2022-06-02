@@ -265,3 +265,66 @@ def test_kill(ltx_helper, whereis):
     ltx_helper.check_time(res[2])
     assert res[3] == 2
     assert res[4] == 9
+
+def test_env(ltx_helper, whereis):
+    """
+    Test setting env variables
+    """
+    paths = whereis("printenv")
+
+    ltx_helper.send(msgpack.packb([2, None, "LTPROOT", "/opt/ltp"]))
+    ltx_helper.send(msgpack.packb([3, 1, paths[0], "LTPROOT"]))
+
+    log = ltx_helper.unpack_next()
+    assert log[0] == 4
+    assert log[1] == 1
+    assert log[3] == "/opt/ltp\n"
+    res = ltx_helper.unpack_next()
+    assert res[0] == 5
+    assert res[3] == 1
+    assert res[4] == 0
+
+    ltx_helper.send(msgpack.packb([2, 1, "LTPROOT", "/usr/share/ltp"]))
+    ltx_helper.send(msgpack.packb([3, 1, paths[0], "LTPROOT"]))
+
+    log = ltx_helper.unpack_next()
+    assert log[0] == 4
+    assert log[3] == "/usr/share/ltp\n"
+    res = ltx_helper.unpack_next()
+    assert res[0] == 5
+    assert res[3] == 1
+    assert res[4] == 0
+
+    ltx_helper.send(msgpack.packb([2, 1, "FOO", "bar"]))
+    ltx_helper.send(msgpack.packb([3, 1, paths[0], "FOO"]))
+
+    log = ltx_helper.unpack_next()
+    assert log[0] == 4
+    assert log[3] == "bar\n"
+    res = ltx_helper.unpack_next()
+    assert res[0] == 5
+    assert res[3] == 1
+    assert res[4] == 0
+
+    ltx_helper.send(msgpack.packb([2, 1, "LTPROOT", "/mnt/ltp"]))
+    ltx_helper.send(msgpack.packb([3, 1, paths[0], "LTPROOT"]))
+
+    log = ltx_helper.unpack_next()
+    assert log[0] == 4
+    assert log[3] == "/mnt/ltp\n"
+    res = ltx_helper.unpack_next()
+    assert res[0] == 5
+    assert res[3] == 1
+    assert res[4] == 0
+
+    ltx_helper.send(msgpack.packb([2, 1, "BAZ", "bar"]))
+    ltx_helper.send(msgpack.packb([2, 1, "FOO", "foo-bar-baz"]))
+    ltx_helper.send(msgpack.packb([3, 1, paths[0], "FOO"]))
+
+    log = ltx_helper.unpack_next()
+    assert log[0] == 4
+    assert log[3] == "foo-bar-baz\n"
+    res = ltx_helper.unpack_next()
+    assert res[0] == 5
+    assert res[3] == 1
+    assert res[4] == 0
