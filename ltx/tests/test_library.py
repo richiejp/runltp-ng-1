@@ -129,13 +129,12 @@ def test_kill(ltx, count, whereis):
         assert thread.si_status == signal.SIGKILL
 
 
-@pytest.mark.xfail(msg="Not implemented yet")
 @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
 def test_env_no_table_id(ltx, count, whereis):
     """
     Test env method without table_id.
     """
-    paths = whereis("echo")
+    paths = whereis("printenv")
 
     for _ in range(0, count):
         ltx.env(None, "HELLO", "world")
@@ -143,22 +142,21 @@ def test_env_no_table_id(ltx, count, whereis):
         table_id = ltx.reserve()
         stdout, time_ns, si_code, si_status = ltx.execute(
             table_id,
-            f"{paths[0]} $HELLO",
+            f"{paths[0]} HELLO",
             timeout=1)
 
-        assert stdout == "world\n"
+        assert "world" in stdout
         assert time_ns > 0
         assert si_code == 1
         assert si_status == 0
 
 
-@pytest.mark.xfail(msg="Not implemented yet")
 @pytest.mark.parametrize("count", [1, LTX.TABLE_ID_MAXSIZE + 100])
 def test_env_with_table_id(ltx, count, whereis):
     """
     Test env method using table_id.
     """
-    paths = whereis("echo")
+    paths = whereis("printenv")
 
     for _ in range(0, count):
         table_id = ltx.reserve()
@@ -166,10 +164,10 @@ def test_env_with_table_id(ltx, count, whereis):
         ltx.env(table_id, "HELLO", "world")
         stdout, time_ns, si_code, si_status = ltx.execute(
             table_id,
-            f"{paths[0]} $HELLO",
+            f"{paths[0]} HELLO",
             timeout=1)
 
-        assert stdout == "world\n"
+        assert "world" in stdout
         assert time_ns > 0
         assert si_code == 1
         assert si_status == 0
