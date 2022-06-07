@@ -385,9 +385,9 @@ class QemuSUT(VirtualMachine):
         self._proc.stdin.write(f"export PS1='{self._ps1}'\n")
         self._proc.stdin.flush()
 
-        self._wait_prompt()
+        self._wait_prompt(timeout=5)
 
-    def _wait_prompt(self) -> None:
+    def _wait_prompt(self, timeout: int = 15) -> None:
         """
         Read stdout until prompt shows up.
         """
@@ -396,12 +396,18 @@ class QemuSUT(VirtualMachine):
         self._proc.stdin.write('\n')
         self._proc.stdin.flush()
 
+        start_t = time.time()
+
         stdout = self._reader.read_until(
             lambda x: x.endswith(f"\n{self._ps1}"),
-            time.time(), 15,
+            start_t,
+            timeout,
             self._logger.debug)
 
         if not stdout:
+            if time.time() - start_t >= timeout:
+                raise SUTTimeoutError("Prompt is not replying")
+
             raise SUTError("Prompt is not available")
 
     def _send_ctrl_c(self) -> None:
@@ -423,7 +429,7 @@ class QemuSUT(VirtualMachine):
 
         self._stop = True
         self._send_ctrl_c()
-        self._wait_prompt()
+        self._wait_prompt(timeout=timeout)
 
         self._wait_for_stop(timeout=timeout)
 
@@ -484,7 +490,7 @@ class QemuSUT(VirtualMachine):
 
             if self._reader.timed_out:
                 self._send_ctrl_c()
-                self._wait_prompt()
+                self._wait_prompt(timeout=5)
 
                 raise SUTTimeoutError(
                     f"'{cmd}' command timed out (timeout={timeout})")
