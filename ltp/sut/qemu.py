@@ -1,17 +1,14 @@
 """
 .. module:: qemu
     :platform: Linux
-    :synopsis: module defining a generic qemu SUT
+    :synopsis: module defining qemu SUT
 
 .. moduleauthor:: Andrea Cervesato <andrea.cervesato@suse.com>
 """
 import os
-import re
 import time
-import string
 import signal
 import shutil
-import secrets
 import logging
 import subprocess
 import threading
@@ -19,14 +16,138 @@ from ltp.common.freader import IOReader
 from .base import SUT
 from .base import SUTError
 from .base import SUTTimeoutError
+from .prompt import CommandPrompt
+
+
+class QemuSerial(CommandPrompt):
+    """
+    Serial class customization for Qemu SUT implementation.
+    """
+
+    def __init__(self, **kwargs) -> None:
+        """
+        :param transport_dev: transport device path
+        :type transport_dev: str
+        :param transport_path: transport file path
+        :type transport_path: str
+        """
+        super().__init__(**kwargs)
+
+        self._transport_dev = kwargs.get("transport_dev", None)
+        self._transport_path = kwargs.get("transport_path", None)
+        self._fetch_lock = threading.Lock()
+        self._fetching_data = False
+
+        if not self._transport_dev:
+            raise ValueError("transport device is empty")
+
+        if not self._transport_path or \
+                not os.path.isfile(self._transport_path):
+            raise ValueError("transport file doesn't exist")
+
+    def _stop_fetching_data(self, timeout: int) -> None:
+        """
+        Stop fetching data.
+        """
+        if not self._fetching_data:
+            return
+
+        self._logger.info("Stop fetching data")
+
+        self._stop = True
+        self._wait_for_stop(timeout=timeout)
+
+        self._logger.info("Fetching data stopped")
+
+    @property
+    def is_running(self) -> bool:
+        return self._fetching_data or self._running_command
+
+    def stop(self, timeout: int = 30) -> None:
+        """
+        Stop any operation on command prompt.
+        """
+        if not self.is_running:
+            return
+
+        with self._stop_lock:
+            self._stop_running_command(timeout)
+            self._stop_fetching_data(timeout)
+
+    def get(
+            self,
+            target_path: str,
+            local_path: str,
+            timeout: int = 3600) -> None:
+        """
+        Get file from target path and download it in the specified local path.
+        :param target_path: path of the file to download from target
+        :type target_path: str
+        :param local_path: path of the downloaded file on local host
+        :type local_path: str
+        :param timeout: timeout before stopping data transfer. Default is 3600
+        :type timeout: int
+        """
+        if not target_path:
+            raise ValueError("target path is empty")
+
+        if not local_path:
+            raise ValueError("local path is empty")
+
+        with self._fetch_lock:
+            self._logger.info("Downloading: %s -> %s", target_path, local_path)
+            self._stop = False
+            self._fetching_data = True
+
+            try:
+                retcode, _, stdout = self.execute(
+                    f"cat {target_path} > {self._transport_dev}",
+                    timeout=timeout)
+
+                if retcode not in [0, signal.SIGTERM]:
+                    raise SUTError(
+                        f"Can't send file to {self._transport_dev}: {stdout}")
+
+                if self._stop:
+                    return
+
+                # read back data and send it to the local file path
+                file_size = os.path.getsize(self._transport_path)
+                start_t = time.time()
+
+                with open(self._transport_path, "rb") as transport:
+                    with open(local_path, "wb") as flocal:
+                        while not self._stop and self._last_pos < file_size:
+                            if time.time() - start_t >= timeout:
+                                self._logger.info(
+                                    "Transfer timed out after %d seconds",
+                                    timeout)
+
+                                raise SUTTimeoutError(
+                                    "Timeout during transfer "
+                                    f"(timeout={timeout}):"
+                                    f" {target_path} -> {local_path}")
+
+                            time.sleep(0.05)
+
+                            transport.seek(self._last_pos)
+                            data = transport.read(4096)
+
+                            self._last_pos = transport.tell()
+
+                            flocal.write(data)
+
+                self._logger.info("File downloaded")
+            finally:
+                self._stop = False
+                self._fetching_data = False
+
 
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=consider-using-with
-
-
-class VirtualMachine(SUT):
+class QemuSUT(SUT):
     """
-    This SUT spawns a new VM using qemu and execute commands inside it.
+    Qemu SUT spawn a new VM using qemu and execute commands inside it.
     This SUT implementation can be used to run LTP testing suites inside
     a protected, virtualized environment.
     """
@@ -41,13 +162,16 @@ class VirtualMachine(SUT):
         self._ram = kwargs.get("ram", "2G")
         self._smp = kwargs.get("smp", "2")
         self._virtfs = kwargs.get("virtfs", None)
-        self._serial = kwargs.get("serial", "isa")
-        self._logger = logging.getLogger("ltp.sut.vm")
+        self._serial_type = kwargs.get("serial", "isa")
+        self._logger = logging.getLogger("ltp.sut.qemu")
         self._proc = None
         self._reader = None
+        self._stdout = None
+        self._stdin = None
+        self._serial = None
         self._stop = False
         self._logged = False
-        self._stop_lock = threading.Lock()
+        self._lock = threading.Lock()
 
         system = kwargs.get("system", "x86_64")
         self._qemu_cmd = f"qemu-system-{system}"
@@ -70,22 +194,31 @@ class VirtualMachine(SUT):
         if self._virtfs and not os.path.isdir(self._virtfs):
             raise ValueError("Virtual FS directory doesn't exist")
 
-        if self._serial not in ["isa", "virtio"]:
+        if self._serial_type not in ["isa", "virtio"]:
             raise ValueError("Serial protocol must be isa or virtio")
 
     @property
     def name(self) -> str:
         return "qemu"
 
+    @property
+    def is_running(self) -> bool:
+        return self._serial.is_running
+
     def stop(self, timeout: int = 30) -> None:
-        with self._stop_lock:
+        with self._lock:
             self._stop = True
+
+            if self._serial:
+                self._serial.stop()
+                self._serial = None
 
             if self._proc:
                 self._logger.info("Shutting down virtual machine")
 
-                self._reader.stop()
-                self._reader = None
+                if self._reader:
+                    self._reader.stop()
+                    self._reader = None
 
                 if self._logged:
                     self._proc.stdin.write("poweroff\n")
@@ -115,11 +248,16 @@ class VirtualMachine(SUT):
                 self._logger.info("Virtual machine stopped")
 
     def force_stop(self, timeout: int = 30) -> None:
-        with self._stop_lock:
+        with self._lock:
             self._stop = True
 
-            self._reader.stop()
-            self._reader = None
+            if self._serial:
+                self._serial.stop(timeout=timeout)
+                self._serial = None
+
+            if self._reader:
+                self._reader.stop()
+                self._reader = None
 
             if self._proc:
                 self._logger.info("Killing virtual machine")
@@ -146,10 +284,10 @@ class VirtualMachine(SUT):
         transport_file = os.path.join(self._tmpdir, f"transport-{pid}")
         transport_dev = ""
 
-        if self._serial == "isa":
-            transport_dev = "/dev/ttyS1"
-        elif self._serial == "virtio":
-            transport_dev = "/dev/vport1p1"
+        if self._serial_type == "isa":
+            transport_dev = "ttyS1"
+        elif self._serial_type == "virtio":
+            transport_dev = "vport1p1"
 
         return transport_dev, transport_file
 
@@ -176,16 +314,16 @@ class VirtualMachine(SUT):
         params.append(f"-drive if=virtio,cache=unsafe,file={image}")
         params.append(f"-chardev stdio,id=tty,logfile={tty_log}")
 
-        if self._serial == "isa":
+        if self._serial_type == "isa":
             params.append("-serial chardev:tty")
             params.append("-serial chardev:transport")
-        elif self._serial == "virtio":
+        elif self._serial_type == "virtio":
             params.append("-device virtio-serial")
             params.append("-device virtconsole,chardev=tty")
             params.append("-device virtserialport,chardev=transport")
         else:
             raise NotImplementedError(
-                f"Unsupported serial device type {self._serial}")
+                f"Unsupported serial device type {self._serial_type}")
 
         _, transport_file = self._get_transport()
         params.append(f"-chardev file,id=transport,path={transport_file}")
@@ -212,6 +350,7 @@ class VirtualMachine(SUT):
 
         return cmd
 
+    # pylint: disable=too-many-statements
     def communicate(self, stdout_callback: callable = None) -> None:
         if self._proc:
             raise SUTError("Virtual machine is already running")
@@ -236,21 +375,23 @@ class VirtualMachine(SUT):
             shell=True,
             universal_newlines=True)
 
+        exitcode = self._proc.poll()
+        if exitcode and exitcode != 0:
+            if not self._stop:
+                raise SUTError(f"Qemu session ended with exit code {exitcode}")
+
+        if self._stop:
+            return
+
         self._reader = IOReader(self._proc.stdout.fileno())
 
         self._logger.info("Waiting for login message")
 
         self._reader.read_until(
-            lambda x: x.endswith(
-                ("login:", "Is another process using the image")),
+            lambda x: x.endswith("login:"),
             time.time(),
             180,
             stdout_callback)
-
-        exitcode = self._proc.poll()
-        if exitcode and exitcode != 0:
-            if not self._stop:
-                raise SUTError(f"Qemu session ended with exit code {exitcode}")
 
         if self._reader and self._reader.timed_out:
             raise SUTError("Can't find login message")
@@ -294,234 +435,31 @@ class VirtualMachine(SUT):
         if self._stop:
             return
 
-        self._proc.stdin.write("\n")
-        self._proc.stdin.flush()
+        self._logger.info("Creating communication object")
+
+        transport_dev, transport_file = self._get_transport()
+
+        self._serial = QemuSerial(
+            stdin=self._proc.stdin,
+            stdout=self._proc.stdout,
+            transport_dev=f"/dev/{transport_dev}",
+            transport_path=transport_file)
+
+        self._serial.start()
 
         self._logged = True
-
-    @property
-    def is_running(self) -> bool:
-        raise NotImplementedError()
-
-    def run_command(self,
-                    command: str,
-                    timeout: int = 3600,
-                    cwd: str = None,
-                    env: dict = None,
-                    stdout_callback: callable = None) -> dict:
-        raise NotImplementedError()
-
-    def fetch_file(
-            self,
-            target_path: str,
-            local_path: str,
-            timeout: int = 3600) -> None:
-        raise NotImplementedError()
-
-
-class QemuSUT(VirtualMachine):
-    """
-    This is not a standard serial I/O protocol communication class, but rather
-    a helper class for sessions where a serial hw channel is exposed via file
-    descriptor. This is really common in a qemu session, where console is
-    exposed in the host system via file descriptor.
-    """
-
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-
-        self._transport_dev, self._transport_path = self._get_transport()
-        self._stop = False
-        self._last_pos = 0
-        self._initialized = False
-        self._fetching_data = False
-        self._running_command = False
-        self._cmd_lock = threading.Lock()
-        self._fetch_lock = threading.Lock()
-        self._ps1 = f"#{self._generate_string()}#"
-
-    @property
-    def is_running(self) -> bool:
-        return self._fetching_data or self._running_command
-
-    def communicate(self, stdout_callback: callable = None) -> None:
-        super().communicate(stdout_callback)
-
-        if self._initialized or self._stop:
-            return
-
-        self._logger.info("Creating communication objects")
-
-        self._init_prompt()
-        self._initialized = True
 
         if self._stop:
             return
 
         if self._virtfs:
-            self.run_command("mount -t 9p -o trans=virtio host0 /mnt")
+            retcode, _, _ = self._serial.execute(
+                "mount -t 9p -o trans=virtio host0 /mnt")
+
+            if retcode != 0:
+                raise SUTError("Failed to mount virtfs")
 
         self._logger.info("Virtual machine started")
-
-    def stop(self, timeout: int = 30) -> None:
-        if self.is_running:
-            with self._stop_lock:
-                self._stop_running_command(timeout)
-                self._stop_fetching_data(timeout)
-
-        self._initialized = False
-
-        super().stop(timeout)
-
-    def force_stop(self, timeout: int = 30) -> None:
-        self.stop(timeout=timeout)
-
-    def _init_prompt(self) -> None:
-        """
-        Initialize shell prompt.
-        """
-        self._logger.info("Initializing command prompt")
-
-        self._proc.stdin.write(f"export PS1='{self._ps1}'\n")
-        self._proc.stdin.flush()
-
-        self._wait_prompt(timeout=5)
-
-    def _wait_prompt(self, timeout: int = 15) -> None:
-        """
-        Read stdout until prompt shows up.
-        """
-        self._logger.info("Waiting for command prompt")
-
-        self._proc.stdin.write('\n')
-        self._proc.stdin.flush()
-
-        start_t = time.time()
-
-        stdout = self._reader.read_until(
-            lambda x: x.endswith(f"\n{self._ps1}"),
-            start_t,
-            timeout,
-            self._logger.debug)
-
-        if not stdout:
-            if time.time() - start_t >= timeout:
-                raise SUTTimeoutError("Prompt is not replying")
-
-            raise SUTError("Prompt is not available")
-
-    def _send_ctrl_c(self) -> None:
-        """
-        Send CTRL+C to stop any current command execution.
-        """
-        self._logger.info("Sending CTRL+C")
-        self._proc.stdin.write('\x03')
-        self._proc.stdin.flush()
-
-    def _stop_running_command(self, timeout: int) -> None:
-        """
-        Stop the running command.
-        """
-        if not self._running_command:
-            return
-
-        self._logger.info("Stopping command")
-
-        self._stop = True
-        self._send_ctrl_c()
-        self._wait_prompt(timeout=timeout)
-
-        self._wait_for_stop(timeout=timeout)
-
-        self._logger.info("Command stopped")
-
-    def _stop_fetching_data(self, timeout: int) -> None:
-        """
-        Stop fetching data.
-        """
-        if not self._fetching_data:
-            return
-
-        self._logger.info("Stop fetching data")
-
-        self._stop = True
-        self._wait_for_stop(timeout=timeout)
-
-        self._logger.info("Fetching data stopped")
-
-    @staticmethod
-    def _generate_string(length: int = 10) -> str:
-        """
-        Generate a random string of the given length.
-        """
-        out = ''.join(secrets.choice(string.ascii_letters + string.digits)
-                      for _ in range(length))
-        return out
-
-    def _send(self,
-              cmd: str,
-              timeout: int,
-              stdout_callback: callable = None) -> set:
-        """
-        Send a command and return retcode, elabsed time and stdout.
-        """
-        code = self._generate_string()
-        cmd_end = f"echo $?-{code}"
-        matcher = re.compile(f"^(?P<retcode>\\d+)-{code}")
-
-        stdout = ""
-        retcode = -1
-        t_start = time.time()
-        t_secs = max(timeout, 0)
-        t_end = 0
-
-        self._proc.stdin.write(cmd)
-        self._proc.stdin.write('\n')
-        self._proc.stdin.write(cmd_end)
-        self._proc.stdin.write('\n')
-        self._proc.stdin.flush()
-
-        while True:
-            line = self._reader.read_until(
-                lambda x: x.endswith('\n'),
-                t_start,
-                t_secs,
-                self._logger.debug)
-
-            if self._reader.timed_out:
-                self._send_ctrl_c()
-                self._wait_prompt(timeout=5)
-
-                raise SUTTimeoutError(
-                    f"'{cmd}' command timed out (timeout={timeout})")
-
-            if self._stop:
-                break
-
-            # ignore echo
-            if cmd in line or cmd_end in line:
-                continue
-
-            match = matcher.match(line)
-            if match:
-                retcode_str = match.group("retcode")
-                self._logger.debug("rercode=%s", retcode_str)
-
-                retcode = int(retcode_str)
-                t_end = time.time() - t_start
-                break
-
-            if stdout_callback:
-                stdout_callback(line.rstrip())
-
-            stdout += line
-
-        if self._stop:
-            retcode = signal.SIGTERM
-
-        t_end = time.time() - t_start
-
-        return retcode, t_end, stdout
 
     def run_command(self,
                     command: str,
@@ -529,112 +467,40 @@ class QemuSUT(VirtualMachine):
                     cwd: str = None,
                     env: dict = None,
                     stdout_callback: callable = None) -> dict:
-        if not command:
-            raise ValueError("command is empty")
+        if not self._serial:
+            return None
 
-        ret = None
+        retcode, t_end, stdout = self._serial.execute(
+            command,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            stdout_callback=stdout_callback)
 
-        with self._cmd_lock:
-            self._logger.info("Running command: %s", command)
-            self._stop = False
-
-            t_secs = max(timeout, 0)
-            retcode = -1
-            t_end = 0
-            stdout = ""
-
-            cmd = ""
-            if cwd:
-                cmd = f"cd {cwd} && "
-
-            if env:
-                for key, value in env.items():
-                    cmd += f"export {key}={value} && "
-
-            cmd += command
-
-            try:
-                self._running_command = True
-
-                retcode, t_end, stdout = self._send(
-                    cmd, timeout, stdout_callback)
-
-                ret = {
-                    "command": command,
-                    "timeout": t_secs,
-                    "returncode": int(retcode),
-                    "stdout": stdout,
-                    "exec_time": t_end,
-                    "env": env,
-                    "cwd": cwd,
-                }
-
-                self._logger.debug(ret)
-                self._logger.info("Command completed")
-            except OSError as err:
-                raise SUTError(err)
-            finally:
-                self._stop = False
-                self._running_command = False
+        ret = {
+            "command": command,
+            "timeout": timeout,
+            "returncode": retcode,
+            "stdout": stdout,
+            "exec_time": t_end,
+            "cwd": cwd,
+            "env": env,
+        }
 
         return ret
 
-    def fetch_file(
-            self,
-            target_path: str,
-            local_path: str,
-            timeout: int = 3600) -> None:
+    def fetch_file(self,
+                   target_path: str,
+                   local_path: str,
+                   timeout: int = 3600) -> None:
         if not target_path:
             raise ValueError("target path is empty")
 
         if not local_path:
             raise ValueError("local path is empty")
 
-        with self._fetch_lock:
-            self._logger.info("Downloading: %s -> %s", target_path, local_path)
-            self._stop = False
-            self._fetching_data = True
-
-            try:
-                ret = self.run_command(
-                    f"cat {target_path} > {self._transport_dev}",
-                    timeout=timeout)
-
-                if ret["returncode"] not in [0, signal.SIGTERM]:
-                    stdout = ret["stdout"]
-                    raise SUTError(
-                        f"Can't send file to {self._transport_dev}: {stdout}")
-
-                if self._stop:
-                    return
-
-                # read back data and send it to the local file path
-                file_size = os.path.getsize(self._transport_path)
-                start_t = time.time()
-
-                with open(self._transport_path, "rb") as transport:
-                    with open(local_path, "wb") as flocal:
-                        while not self._stop and self._last_pos < file_size:
-                            if time.time() - start_t >= timeout:
-                                self._logger.info(
-                                    "Transfer timed out after %d seconds",
-                                    timeout)
-
-                                raise SUTTimeoutError(
-                                    "Timeout during transfer "
-                                    f"(timeout={timeout}):"
-                                    f" {target_path} -> {local_path}")
-
-                            time.sleep(0.05)
-
-                            transport.seek(self._last_pos)
-                            data = transport.read(4096)
-
-                            self._last_pos = transport.tell()
-
-                            flocal.write(data)
-
-                self._logger.info("File downloaded")
-            finally:
-                self._stop = False
-                self._fetching_data = False
+        if self._serial:
+            self._serial.get(
+                target_path,
+                local_path,
+                timeout=timeout)
