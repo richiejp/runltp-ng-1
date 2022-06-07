@@ -161,7 +161,7 @@ class SerialDispatcher(Dispatcher):
 
         return code, messages
 
-    def _reboot_sut(self) -> None:
+    def _reboot_sut(self, force: bool = False) -> None:
         """
         This method reboot SUT if needed, for example, after a Kernel panic.
         """
@@ -171,7 +171,11 @@ class SerialDispatcher(Dispatcher):
         def _mystdout_line(line: str) -> None:
             self._events.sut_stdout_line(self._sut.name, line)
 
-        self._sut.force_stop()
+        if force:
+            self._sut.force_stop()
+        else:
+            self._sut.stop()
+
         self._sut.communicate(stdout_callback=_mystdout_line)
 
         self._logger.info("SUT rebooted")
@@ -217,23 +221,22 @@ class SerialDispatcher(Dispatcher):
         except SUTTimeoutError:
             timed_out = True
 
-            try:
-                # check if SUT still replies to commands..
-                self._sut.run_command("test .", timeout=3)
+            if any("Kernel panic" in msg for msg in stdout):
+                self._events.kernel_panic()
+                self._reboot_sut(force=True)
+            else:
+                try:
+                    # check if SUT still replies to commands..
+                    self._sut.run_command("test .", timeout=3)
 
-                # SUT is replying. Only test timed out
-                self._events.test_timed_out(test.name, self._test_timeout)
-            except SUTTimeoutError:
-                # ..if not, we reboot the SUT
-                # it might be a kernel panic or a kernel freeze
-                self._logger.info("SUT is not replying")
+                    # SUT is replying. Only test timed out
+                    self._events.test_timed_out(test.name, self._test_timeout)
+                except SUTTimeoutError:
+                    # ..if not, we reboot the SUT
+                    self._logger.info("SUT is not replying")
 
-                if any("Kernel panic" in msg for msg in stdout):
-                    self._events.kernel_panic()
-                else:
                     self._events.sut_not_responding()
-
-                self._reboot_sut()
+                    self._reboot_sut(force=True)
 
             # emulate test reply
             test_data = {
