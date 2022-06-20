@@ -1,5 +1,6 @@
-#include <linux/limits.h>
 #define _GNU_SOURCE
+
+#include <linux/limits.h>
 
 #include <endian.h>
 #include <fcntl.h>
