@@ -1,1 +1,3 @@
 ltx
+cross/aarch64
+cross/initrd
