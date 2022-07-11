@@ -11,6 +11,7 @@ below). However Linux doesn't require this. Using Clang with Linux is
 as simple as adding `LLVM=1` to the command line.
 
 ```sh
+$ cd $linux
 $ make LLVM=1 ARCH=arm64 defconfig
 $ make LLVM=1 ARCH=arm64 menuconfig
 $ make LLVM=1 ARCH=arm64 -j$(nproc)
@@ -39,10 +40,29 @@ compiled. It is relatively small at 126K. This is double the size
 compared to being dynamically linked to musl. However we can live with
 this.
 
+### LTX
+
 ```sh
+$ cd $runltp-ng/ltx
 $ zig cc --target=aarch64-linux-musl -o ltx ltx.c
 $ cp ltx cross/initrd/init
 ```
+
+### LTP
+
+My first attempt at cross compiling LTP with Zig has not been entirely
+successful. However it appears that it can compile most tests. This is
+good enough for now and also a pleasant surprise.
+
+```sh
+$ cd $ltp
+$ make autotools
+$ ./configure --prefix=(realpath ../ltp-install/) CC='zig cc --target=aarch64-linux-musl' --host=aarch64
+$ make -j$(nproc)
+```
+
+Tests executables can be copy and pasted into `$ltx/cross/initrd/bin`
+or similar.
 
 ## initrd
 
@@ -51,7 +71,7 @@ system image which the kernel can load init from. This can be created
 with `cpio`.
 
 ```sh
-$ cd cross/initrd
+$ cd $ltx/cross/initrd
 $ find . | cpio -H newc -o | gzip -n > ../aarch64/initrd.cpio.gz
 ```
 
